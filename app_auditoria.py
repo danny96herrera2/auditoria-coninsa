@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import re
 from streamlit_drawable_canvas import st_canvas
 import streamlit.components.v1 as components
 
@@ -76,6 +77,10 @@ div[data-testid="metric-container"] {
     /* Forzar que las tablas se expandan al 100% sin scroll al imprimir */
     .stDataFrame, .stDataFrame > div { height: auto !important; max-height: none !important; overflow: visible !important; }
     
+    /* MAGIA: Forzar que todas las pestañas (tabs) se impriman una debajo de la otra */
+    .stTabs [data-baseweb="tab-panel"] { display: block !important; visibility: visible !important; }
+    .stTabs [role="tablist"] { display: none !important; } /* Oculta los botones de las pestañas en el papel */
+    
     .salto-impresion { page-break-before: always; }
 }
 </style>
@@ -117,9 +122,7 @@ if uploaded_file is not None:
             uploaded_file.seek(0)
             df = pd.read_excel(uploaded_file, engine='openpyxl' if uploaded_file.name.endswith('xlsx') else None)
 
-        # ==========================================
-        # EXTRAER NOMBRE REAL DEL PROYECTO
-        # ==========================================
+        # NOMBRE DEL PROYECTO
         nombre_proyecto = "PROYECTO EN AUDITORÍA"
         for c in df.columns:
             if "-" in str(c) and len(str(c)) > 10 and "UNNAMED" not in str(c).upper():
@@ -133,9 +136,7 @@ if uploaded_file is not None:
         </div>
         """, unsafe_allow_html=True)
 
-        # ==========================================
-        # BUSCADOR DE COLUMNAS FLEXIBLE
-        # ==========================================
+        # COLUMNAS FLEXIBLES
         df.columns = [str(c).upper() for c in df.columns]
         
         def encontrar_col(palabras):
@@ -156,28 +157,22 @@ if uploaded_file is not None:
         for c in cols_num:
             df[c] = df[c].apply(limpiar_numero)
 
-        # ==========================================
         # TOTALES GENERALES
-        # ==========================================
-        fila_total = df[df[col_desc].astype(str).str.contains("TOTAL", na=False)]
+        df[col_desc] = df[col_desc].fillna("")
+        fila_total = df[df[col_desc].astype(str).str.upper().str.contains("TOTAL", na=False)]
+        
         if not fila_total.empty:
             tot_pres = fila_total.iloc[-1][c_pres_v] if c_pres_v else 0
             tot_proy = fila_total.iloc[-1][c_proy_v] if c_proy_v else 0
             tot_aseg = fila_total.iloc[-1][c_aseg_v] if c_aseg_v else 0
             tot_cons = fila_total.iloc[-1][c_cons_v] if c_cons_v else 0
         else:
-            if col_cod:
-                df_calc = df[df[col_cod].notna() & (df[col_cod].astype(str).str.strip() != '') & (df[col_cod].astype(str).str.strip() != '0')]
-            else:
-                df_calc = df
-            tot_pres = df_calc[c_pres_v].sum() if c_pres_v else 0
-            tot_proy = df_calc[c_proy_v].sum() if c_proy_v else 0
-            tot_aseg = df_calc[c_aseg_v].sum() if c_aseg_v else 0
-            tot_cons = df_calc[c_cons_v].sum() if c_cons_v else 0
+            tot_pres = df[c_pres_v].sum() if c_pres_v else 0
+            tot_proy = df[c_proy_v].sum() if c_proy_v else 0
+            tot_aseg = df[c_aseg_v].sum() if c_aseg_v else 0
+            tot_cons = df[c_cons_v].sum() if c_cons_v else 0
 
-        # ==========================================
-        # TARJETAS DE MÉTRICAS (KPIs) - En miles
-        # ==========================================
+        # TARJETAS DE MÉTRICAS (En miles)
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
         kpi1.metric("Presupuesto (Miles)", f"${(tot_pres/1000):,.0f}")
         kpi2.metric("Proyectado (Miles)", f"${(tot_proy/1000):,.0f}", f"${((tot_proy - tot_pres)/1000):,.0f} vs Pres", delta_color="inverse")
@@ -185,114 +180,119 @@ if uploaded_file is not None:
         kpi4.metric("Consumido (Miles)", f"${(tot_cons/1000):,.0f}", f"${((tot_cons - tot_aseg)/1000):,.0f} vs Aseg", delta_color="inverse")
         
         # ==========================================
-        # PREPARAR DATOS DE CAPÍTULOS
+        # FILTRO INTELIGENTE: CAPÍTULOS VS ÍTEMS
         # ==========================================
-        if col_cod is not None:
-            df_capitulos = df[df[col_cod].isna() | (df[col_cod].astype(str).str.strip() == '') | (df[col_cod].astype(str).str.strip() == '0') | (df[col_cod].astype(str).str.lower() == 'nan')].copy()
-            df_capitulos = df_capitulos[df_capitulos[col_desc].notna()]
-            df_capitulos = df_capitulos[~df_capitulos[col_desc].astype(str).str.contains("TOTAL")]
-        else:
-            df_capitulos = df.head(15).copy()
-
-        # Transformar todos los valores a "Miles"
-        for c in cols_num:
-            df_capitulos[c] = df_capitulos[c] / 1000.0
-
-        # ==========================================
-        # GRÁFICA COMPARATIVA CON FILTRO
-        # ==========================================
-        st.markdown('<div class="subtitulo">📊 COMPARATIVA DE COSTOS POR CAPÍTULO (Cifras en Miles)</div>', unsafe_allow_html=True)
+        # Regla: Capítulos inician con 1 o 2 números seguidos de un guion (ej. "1-PRELIMINARES") o espacio
+        patron_capitulos = r'^\s*\d{1,2}\s*[-]'
+        es_capitulo = df[col_desc].astype(str).str.contains(patron_capitulos, regex=True, na=False)
+        es_total = df[col_desc].astype(str).str.upper().str.contains("TOTAL", na=False)
         
-        # FILTRO DE CAPÍTULOS
-        todos_los_capitulos = df_capitulos[col_desc].dropna().unique().tolist()
-        capitulos_seleccionados = st.multiselect(
-            "🔍 Filtra los Capítulos que deseas visualizar en la gráfica:", 
-            options=todos_los_capitulos, 
-            default=todos_los_capitulos
-        )
-
-        cols_grafica = []
-        nombres_grafica = []
-        if c_pres_v: cols_grafica.append(c_pres_v); nombres_grafica.append("Presupuestado")
-        if c_proy_v: cols_grafica.append(c_proy_v); nombres_grafica.append("Proyectado")
-        if c_aseg_v: cols_grafica.append(c_aseg_v); nombres_grafica.append("Asegurado")
+        df_capitulos = df[es_capitulo & ~es_total].copy()
         
-        if cols_grafica and not df_capitulos.empty:
-            df_grafica = df_capitulos.set_index(col_desc)[cols_grafica].copy()
-            df_grafica.columns = nombres_grafica
-            df_grafica.index.name = "Capítulo"
-            
-            # Aplicar el filtro a la gráfica
-            df_grafica_filtrada = df_grafica[df_grafica.index.isin(capitulos_seleccionados)]
-            
-            colores_coninsa = ["#002856", "#8CC63F", "#FFC112"][:len(cols_grafica)]
-            try:
-                st.bar_chart(df_grafica_filtrada, use_container_width=True, color=colores_coninsa)
-            except:
-                st.bar_chart(df_grafica_filtrada, use_container_width=True)
-        else:
-            st.info("No hay suficientes datos de valor para generar la gráfica.")
+        # Si la regla del guion no encuentra nada, flexibilizamos a que solo inicie con número y texto
+        if df_capitulos.empty:
+            patron_capitulos_flexible = r'^\s*\d{1,2}\s+[A-Za-z]'
+            es_capitulo = df[col_desc].astype(str).str.contains(patron_capitulos_flexible, regex=True, na=False)
+            df_capitulos = df[es_capitulo & ~es_total].copy()
 
-        # ==========================================
-        # TABLAS DE ANÁLISIS DE DESVIACIONES Y OBSERVACIONES
-        # ==========================================
-        st.markdown('<div class="subtitulo">📋 ANÁLISIS DE DESVIACIONES POR CAPÍTULO (Cifras en Miles)</div>', unsafe_allow_html=True)
-        
-        # Pre-cálculo de diferencias porcentuales
+        # Los ítems son todas las filas numéricas que NO son capítulos ni totales
+        df_items = df[(~es_capitulo) & (~es_total) & (df[col_desc].str.strip() != "")].copy()
+        # Filtramos ítems vacíos donde todo es cero
         if c_pres_v and c_proy_v:
-            df_capitulos['VAR_PPTO_%'] = np.where(df_capitulos[c_pres_v] > 0, ((df_capitulos[c_proy_v] - df_capitulos[c_pres_v]) / df_capitulos[c_pres_v]) * 100, 0.0)
-        else:
-            df_capitulos['VAR_PPTO_%'] = 0.0
+            df_items = df_items[(df_items[c_pres_v] > 0) | (df_items[c_proy_v] > 0)]
 
-        # CAMBIO: Ahora compara Proyectado vs Asegurado
-        if c_proy_v and c_aseg_v:
-            df_capitulos['VAR_ASEG_%'] = np.where(df_capitulos[c_proy_v] > 0, ((df_capitulos[c_aseg_v] - df_capitulos[c_proy_v]) / df_capitulos[c_proy_v]) * 100, 0.0)
-        else:
-            df_capitulos['VAR_ASEG_%'] = 0.0
+        # Transformar a Miles
+        for c in cols_num:
+            if not df_capitulos.empty: df_capitulos[c] = df_capitulos[c] / 1000.0
+            if not df_items.empty: df_items[c] = df_items[c] / 1000.0
 
-        df_capitulos['Observaciones'] = ""
-        
-        # Cálculo exacto de altura para evitar scroll y forzar la impresión completa
-        altura_dinamica = (len(df_capitulos) * 36) + 40
+        # ==========================================
+        # FUNCIÓN PARA CREAR TABLAS (Reutilizable)
+        # ==========================================
+        def generar_tablas(df_datos, key_prefix):
+            if c_pres_v and c_proy_v:
+                df_datos['VAR_PPTO_%'] = np.where(df_datos[c_pres_v] > 0, ((df_datos[c_proy_v] - df_datos[c_pres_v]) / df_datos[c_pres_v]) * 100, 0.0)
+            else: df_datos['VAR_PPTO_%'] = 0.0
 
-        # TABLA 1: PROYECTADO VS PRESUPUESTADO
-        st.markdown('<div class="titulo-tabla">1. PROYECTADO VS PRESUPUESTADO</div>', unsafe_allow_html=True)
-        df_t1 = df_capitulos[[col_desc, c_pres_v, c_proy_v, 'VAR_PPTO_%', 'Observaciones']].copy() if c_pres_v and c_proy_v else pd.DataFrame()
-        if not df_t1.empty:
-            df_t1.columns = ['Capítulo', 'Presupuestado', 'Proyectado', 'Diferencia (%)', 'Observaciones']
-            st.data_editor(
-                df_t1, 
-                column_config={
-                    "Presupuestado": st.column_config.NumberColumn(format="$ %,.0f"),
-                    "Proyectado": st.column_config.NumberColumn(format="$ %,.0f"),
-                    "Diferencia (%)": st.column_config.NumberColumn(format="%.1f %%"),
-                    "Observaciones": st.column_config.TextColumn(help="Doble clic para escribir")
-                }, 
-                use_container_width=True, 
-                hide_index=True,
-                height=altura_dinamica,
-                key="tabla_ppto"
+            if c_proy_v and c_aseg_v:
+                df_datos['VAR_ASEG_%'] = np.where(df_datos[c_proy_v] > 0, ((df_datos[c_aseg_v] - df_datos[c_proy_v]) / df_datos[c_proy_v]) * 100, 0.0)
+            else: df_datos['VAR_ASEG_%'] = 0.0
+
+            df_datos['Observaciones'] = ""
+            altura_dinamica = min(max((len(df_datos) * 36) + 40, 200), 800) # Límite en pantalla (se expande al imprimir)
+
+            st.markdown('<div class="titulo-tabla">1. PROYECTADO VS PRESUPUESTADO</div>', unsafe_allow_html=True)
+            df_t1 = df_datos[[col_desc, c_pres_v, c_proy_v, 'VAR_PPTO_%', 'Observaciones']].copy() if c_pres_v and c_proy_v else pd.DataFrame()
+            if not df_t1.empty:
+                df_t1.columns = ['Descripción', 'Presupuestado', 'Proyectado', 'Diferencia (%)', 'Observaciones']
+                st.data_editor(
+                    df_t1, 
+                    column_config={
+                        "Presupuestado": st.column_config.NumberColumn(format="$ %,.0f"),
+                        "Proyectado": st.column_config.NumberColumn(format="$ %,.0f"),
+                        "Diferencia (%)": st.column_config.NumberColumn(format="%.1f %%"),
+                        "Observaciones": st.column_config.TextColumn(help="Doble clic para escribir")
+                    }, 
+                    use_container_width=True, hide_index=True, height=altura_dinamica, key=f"{key_prefix}_1"
+                )
+
+            st.markdown('<br>', unsafe_allow_html=True) 
+            st.markdown('<div class="titulo-tabla">2. ASEGURADO VS PROYECTADO</div>', unsafe_allow_html=True)
+            df_t2 = df_datos[[col_desc, c_proy_v, c_aseg_v, 'VAR_ASEG_%', 'Observaciones']].copy() if c_proy_v and c_aseg_v else pd.DataFrame()
+            if not df_t2.empty:
+                df_t2.columns = ['Descripción', 'Proyectado', 'Asegurado', 'Diferencia (%)', 'Observaciones']
+                st.data_editor(
+                    df_t2, 
+                    column_config={
+                        "Proyectado": st.column_config.NumberColumn(format="$ %,.0f"),
+                        "Asegurado": st.column_config.NumberColumn(format="$ %,.0f"),
+                        "Diferencia (%)": st.column_config.NumberColumn(format="%.1f %%"),
+                        "Observaciones": st.column_config.TextColumn(help="Doble clic para escribir")
+                    }, 
+                    use_container_width=True, hide_index=True, height=altura_dinamica, key=f"{key_prefix}_2"
+                )
+
+        # ==========================================
+        # INTERFAZ DE PESTAÑAS (HOJAS)
+        # ==========================================
+        tab_capitulos, tab_items = st.tabs(["📑 Hoja 1: Resumen de Capítulos", "🗂️ Hoja 2: Detalle por Ítems"])
+
+        # ---> HOJA 1: CAPÍTULOS
+        with tab_capitulos:
+            st.markdown('<div class="subtitulo">📊 COMPARATIVA GERENCIAL (Capítulos)</div>', unsafe_allow_html=True)
+            
+            # FILTRO PARA GRÁFICA
+            todos_los_capitulos = df_capitulos[col_desc].dropna().unique().tolist() if not df_capitulos.empty else []
+            capitulos_seleccionados = st.multiselect(
+                "🔍 Filtra los Capítulos de la gráfica:", 
+                options=todos_los_capitulos, default=todos_los_capitulos
             )
 
-        # TABLA 2: ASEGURADO VS PROYECTADO
-        st.markdown('<br>', unsafe_allow_html=True) 
-        st.markdown('<div class="titulo-tabla">2. ASEGURADO VS PROYECTADO</div>', unsafe_allow_html=True)
-        df_t2 = df_capitulos[[col_desc, c_proy_v, c_aseg_v, 'VAR_ASEG_%', 'Observaciones']].copy() if c_proy_v and c_aseg_v else pd.DataFrame()
-        if not df_t2.empty:
-            df_t2.columns = ['Capítulo', 'Proyectado', 'Asegurado', 'Diferencia (%)', 'Observaciones']
-            st.data_editor(
-                df_t2, 
-                column_config={
-                    "Proyectado": st.column_config.NumberColumn(format="$ %,.0f"),
-                    "Asegurado": st.column_config.NumberColumn(format="$ %,.0f"),
-                    "Diferencia (%)": st.column_config.NumberColumn(format="%.1f %%"),
-                    "Observaciones": st.column_config.TextColumn(help="Doble clic para escribir")
-                }, 
-                use_container_width=True, 
-                hide_index=True,
-                height=altura_dinamica,
-                key="tabla_aseg"
-            )
+            cols_grafica = []
+            nombres_grafica = []
+            if c_pres_v: cols_grafica.append(c_pres_v); nombres_grafica.append("Presupuestado")
+            if c_proy_v: cols_grafica.append(c_proy_v); nombres_grafica.append("Proyectado")
+            if c_aseg_v: cols_grafica.append(c_aseg_v); nombres_grafica.append("Asegurado")
+            
+            if cols_grafica and not df_capitulos.empty:
+                df_grafica = df_capitulos.set_index(col_desc)[cols_grafica].copy()
+                df_grafica.columns = nombres_grafica
+                df_grafica_filtrada = df_grafica[df_grafica.index.isin(capitulos_seleccionados)]
+                
+                colores_coninsa = ["#002856", "#8CC63F", "#FFC112"][:len(cols_grafica)]
+                try: st.bar_chart(df_grafica_filtrada, use_container_width=True, color=colores_coninsa)
+                except: st.bar_chart(df_grafica_filtrada, use_container_width=True)
+            
+            st.markdown('<div class="subtitulo">📋 TABLAS DE CONTROL - Nivel Capítulo</div>', unsafe_allow_html=True)
+            generar_tablas(df_capitulos, "capitulos")
+
+        # ---> HOJA 2: ÍTEMS
+        with tab_items:
+            st.markdown('<div class="subtitulo">🔍 DESGLOSE DETALLADO - Nivel Ítem</div>', unsafe_allow_html=True)
+            if df_items.empty:
+                st.info("No se detectaron ítems desglosados en el archivo Excel.")
+            else:
+                generar_tablas(df_items, "items")
 
         # ==========================================
         # FIRMA DEL AUDITOR Y BOTÓN DE IMPRIMIR
@@ -303,13 +303,10 @@ if uploaded_file is not None:
         
         col_izq, col_der = st.columns([2, 1])
         with col_izq:
-            opciones = ["(Seleccione un Capítulo)"] + list(df_capitulos[col_desc].dropna().astype(str).unique())
-            item = st.selectbox("Seleccione el capítulo a destacar (Opcional):", opciones)
-            obs = st.text_area("Conclusiones Generales del Proyecto:", height=110)
+            obs = st.text_area("Conclusiones Generales de la Auditoría:", height=110)
         with col_der:
-            # Agregado el campo para el nombre del auditor
-            nombre_auditor = st.text_input("👤 Nombre del Auditor:")
-            st.write("**Firma Responsable:**")
+            nombre_auditor = st.text_input("👤 Nombre del Auditor Responsable:")
+            st.write("**Firma:**")
             st_canvas(
                 fill_color="rgba(140, 198, 63, 0.3)", stroke_width=2, stroke_color="#002856",
                 background_color="#ffffff", height=150, width=300, drawing_mode="freedraw", key="canvas"
@@ -318,10 +315,7 @@ if uploaded_file is not None:
         col_bot1, col_bot2 = st.columns([1, 1])
         with col_bot1:
             if st.button("💾 Guardar Auditoría", type="primary"):
-                if nombre_auditor:
-                    st.success(f"Guardado con éxito por el auditor: {nombre_auditor}.")
-                else:
-                    st.warning("Auditoría guardada, pero no se especificó un nombre de auditor.")
+                st.success(f"Auditoría cerrada con éxito por {nombre_auditor if nombre_auditor else 'el auditor'}.")
                 
         with col_bot2:
             components.html(
@@ -341,7 +335,7 @@ if uploaded_file is not None:
                     font-weight:bold;
                     font-family:sans-serif;
                     width: 100%;
-                ">🖨️ Imprimir Reporte Oficial (PDF)</button>
+                ">🖨️ Imprimir Reporte (Incluye ambas hojas)</button>
                 """,
                 height=55
             )
