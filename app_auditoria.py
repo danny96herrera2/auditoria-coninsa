@@ -79,7 +79,7 @@ div[data-testid="metric-container"] {
     
     /* MAGIA: Forzar que todas las pestañas (tabs) se impriman una debajo de la otra */
     .stTabs [data-baseweb="tab-panel"] { display: block !important; visibility: visible !important; }
-    .stTabs [role="tablist"] { display: none !important; } /* Oculta los botones de las pestañas en el papel */
+    .stTabs [role="tablist"] { display: none !important; } 
     
     .salto-impresion { page-break-before: always; }
 }
@@ -182,32 +182,27 @@ if uploaded_file is not None:
         # ==========================================
         # FILTRO INTELIGENTE: CAPÍTULOS VS ÍTEMS
         # ==========================================
-        # Regla: Capítulos inician con 1 o 2 números seguidos de un guion (ej. "1-PRELIMINARES") o espacio
         patron_capitulos = r'^\s*\d{1,2}\s*[-]'
         es_capitulo = df[col_desc].astype(str).str.contains(patron_capitulos, regex=True, na=False)
         es_total = df[col_desc].astype(str).str.upper().str.contains("TOTAL", na=False)
         
         df_capitulos = df[es_capitulo & ~es_total].copy()
         
-        # Si la regla del guion no encuentra nada, flexibilizamos a que solo inicie con número y texto
         if df_capitulos.empty:
             patron_capitulos_flexible = r'^\s*\d{1,2}\s+[A-Za-z]'
             es_capitulo = df[col_desc].astype(str).str.contains(patron_capitulos_flexible, regex=True, na=False)
             df_capitulos = df[es_capitulo & ~es_total].copy()
 
-        # Los ítems son todas las filas numéricas que NO son capítulos ni totales
         df_items = df[(~es_capitulo) & (~es_total) & (df[col_desc].str.strip() != "")].copy()
-        # Filtramos ítems vacíos donde todo es cero
         if c_pres_v and c_proy_v:
             df_items = df_items[(df_items[c_pres_v] > 0) | (df_items[c_proy_v] > 0)]
 
-        # Transformar a Miles
         for c in cols_num:
             if not df_capitulos.empty: df_capitulos[c] = df_capitulos[c] / 1000.0
             if not df_items.empty: df_items[c] = df_items[c] / 1000.0
 
         # ==========================================
-        # FUNCIÓN PARA CREAR TABLAS (Reutilizable)
+        # FUNCIÓN PARA CREAR TABLAS
         # ==========================================
         def generar_tablas(df_datos, key_prefix):
             if c_pres_v and c_proy_v:
@@ -219,7 +214,7 @@ if uploaded_file is not None:
             else: df_datos['VAR_ASEG_%'] = 0.0
 
             df_datos['Observaciones'] = ""
-            altura_dinamica = min(max((len(df_datos) * 36) + 40, 200), 800) # Límite en pantalla (se expande al imprimir)
+            altura_dinamica = min(max((len(df_datos) * 36) + 40, 200), 800) 
 
             st.markdown('<div class="titulo-tabla">1. PROYECTADO VS PRESUPUESTADO</div>', unsafe_allow_html=True)
             df_t1 = df_datos[[col_desc, c_pres_v, c_proy_v, 'VAR_PPTO_%', 'Observaciones']].copy() if c_pres_v and c_proy_v else pd.DataFrame()
@@ -257,11 +252,9 @@ if uploaded_file is not None:
         # ==========================================
         tab_capitulos, tab_items = st.tabs(["📑 Hoja 1: Resumen de Capítulos", "🗂️ Hoja 2: Detalle por Ítems"])
 
-        # ---> HOJA 1: CAPÍTULOS
         with tab_capitulos:
             st.markdown('<div class="subtitulo">📊 COMPARATIVA GERENCIAL (Capítulos)</div>', unsafe_allow_html=True)
             
-            # FILTRO PARA GRÁFICA
             todos_los_capitulos = df_capitulos[col_desc].dropna().unique().tolist() if not df_capitulos.empty else []
             capitulos_seleccionados = st.multiselect(
                 "🔍 Filtra los Capítulos de la gráfica:", 
@@ -277,6 +270,10 @@ if uploaded_file is not None:
             if cols_grafica and not df_capitulos.empty:
                 df_grafica = df_capitulos.set_index(col_desc)[cols_grafica].copy()
                 df_grafica.columns = nombres_grafica
+                
+                # ¡LA VACUNA CONTRA EL ERROR DE ALTAIR!
+                df_grafica.index.name = "Capítulo" 
+                
                 df_grafica_filtrada = df_grafica[df_grafica.index.isin(capitulos_seleccionados)]
                 
                 colores_coninsa = ["#002856", "#8CC63F", "#FFC112"][:len(cols_grafica)]
@@ -286,7 +283,6 @@ if uploaded_file is not None:
             st.markdown('<div class="subtitulo">📋 TABLAS DE CONTROL - Nivel Capítulo</div>', unsafe_allow_html=True)
             generar_tablas(df_capitulos, "capitulos")
 
-        # ---> HOJA 2: ÍTEMS
         with tab_items:
             st.markdown('<div class="subtitulo">🔍 DESGLOSE DETALLADO - Nivel Ítem</div>', unsafe_allow_html=True)
             if df_items.empty:
