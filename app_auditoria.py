@@ -72,6 +72,10 @@ div[data-testid="metric-container"] {
     div[data-testid="metric-container"] { box-shadow: none !important; border: 1px solid #ccc !important; }
     
     .block-container { max-width: 100% !important; padding: 1rem !important; }
+    
+    /* Forzar que las tablas se expandan al 100% sin scroll al imprimir */
+    .stDataFrame, .stDataFrame > div { height: auto !important; max-height: none !important; overflow: visible !important; }
+    
     .salto-impresion { page-break-before: always; }
 }
 </style>
@@ -124,7 +128,7 @@ if uploaded_file is not None:
 
         st.markdown(f"""
         <div class="header-corporativo">
-            <h1>AUDITORÍA DE COSTOS E INVENTARIOS</h1>
+            <h1>AUDITORÍA DE COSTOS</h1>
             <p>📁 {nombre_proyecto}</p>
         </div>
         """, unsafe_allow_html=True)
@@ -190,15 +194,23 @@ if uploaded_file is not None:
         else:
             df_capitulos = df.head(15).copy()
 
-        # Transformar todos los valores a "Miles" para facilitar la lectura
+        # Transformar todos los valores a "Miles"
         for c in cols_num:
             df_capitulos[c] = df_capitulos[c] / 1000.0
 
         # ==========================================
-        # GRÁFICA COMPARATIVA DE BARRAS
+        # GRÁFICA COMPARATIVA CON FILTRO
         # ==========================================
         st.markdown('<div class="subtitulo">📊 COMPARATIVA DE COSTOS POR CAPÍTULO (Cifras en Miles)</div>', unsafe_allow_html=True)
         
+        # FILTRO DE CAPÍTULOS
+        todos_los_capitulos = df_capitulos[col_desc].dropna().unique().tolist()
+        capitulos_seleccionados = st.multiselect(
+            "🔍 Filtra los Capítulos que deseas visualizar en la gráfica:", 
+            options=todos_los_capitulos, 
+            default=todos_los_capitulos
+        )
+
         cols_grafica = []
         nombres_grafica = []
         if c_pres_v: cols_grafica.append(c_pres_v); nombres_grafica.append("Presupuestado")
@@ -210,16 +222,19 @@ if uploaded_file is not None:
             df_grafica.columns = nombres_grafica
             df_grafica.index.name = "Capítulo"
             
+            # Aplicar el filtro a la gráfica
+            df_grafica_filtrada = df_grafica[df_grafica.index.isin(capitulos_seleccionados)]
+            
             colores_coninsa = ["#002856", "#8CC63F", "#FFC112"][:len(cols_grafica)]
             try:
-                st.bar_chart(df_grafica, use_container_width=True, color=colores_coninsa)
+                st.bar_chart(df_grafica_filtrada, use_container_width=True, color=colores_coninsa)
             except:
-                st.bar_chart(df_grafica, use_container_width=True)
+                st.bar_chart(df_grafica_filtrada, use_container_width=True)
         else:
             st.info("No hay suficientes datos de valor para generar la gráfica.")
 
         # ==========================================
-        # TABLAS DE ANÁLISIS DE DESVIACIONES Y OBSERVACIONES (APILADAS)
+        # TABLAS DE ANÁLISIS DE DESVIACIONES Y OBSERVACIONES
         # ==========================================
         st.markdown('<div class="subtitulo">📋 ANÁLISIS DE DESVIACIONES POR CAPÍTULO (Cifras en Miles)</div>', unsafe_allow_html=True)
         
@@ -229,16 +244,18 @@ if uploaded_file is not None:
         else:
             df_capitulos['VAR_PPTO_%'] = 0.0
 
-        if c_proy_v and c_comp_v:
-            df_capitulos['VAR_COMP_%'] = np.where(df_capitulos[c_proy_v] > 0, ((df_capitulos[c_comp_v] - df_capitulos[c_proy_v]) / df_capitulos[c_proy_v]) * 100, 0.0)
+        # CAMBIO: Ahora compara Proyectado vs Asegurado
+        if c_proy_v and c_aseg_v:
+            df_capitulos['VAR_ASEG_%'] = np.where(df_capitulos[c_proy_v] > 0, ((df_capitulos[c_aseg_v] - df_capitulos[c_proy_v]) / df_capitulos[c_proy_v]) * 100, 0.0)
         else:
-            df_capitulos['VAR_COMP_%'] = 0.0
+            df_capitulos['VAR_ASEG_%'] = 0.0
 
         df_capitulos['Observaciones'] = ""
         
-        altura_dinamica = min(max(len(df_capitulos) * 38 + 45, 200), 800)
+        # Cálculo exacto de altura para evitar scroll y forzar la impresión completa
+        altura_dinamica = (len(df_capitulos) * 36) + 40
 
-        # TABLA 1: ARRIBA
+        # TABLA 1: PROYECTADO VS PRESUPUESTADO
         st.markdown('<div class="titulo-tabla">1. PROYECTADO VS PRESUPUESTADO</div>', unsafe_allow_html=True)
         df_t1 = df_capitulos[[col_desc, c_pres_v, c_proy_v, 'VAR_PPTO_%', 'Observaciones']].copy() if c_pres_v and c_proy_v else pd.DataFrame()
         if not df_t1.empty:
@@ -257,24 +274,24 @@ if uploaded_file is not None:
                 key="tabla_ppto"
             )
 
-        # TABLA 2: ABAJO
+        # TABLA 2: ASEGURADO VS PROYECTADO
         st.markdown('<br>', unsafe_allow_html=True) 
-        st.markdown('<div class="titulo-tabla">2. COMPRADO VS PROYECTADO</div>', unsafe_allow_html=True)
-        df_t2 = df_capitulos[[col_desc, c_proy_v, c_comp_v, 'VAR_COMP_%', 'Observaciones']].copy() if c_proy_v and c_comp_v else pd.DataFrame()
+        st.markdown('<div class="titulo-tabla">2. ASEGURADO VS PROYECTADO</div>', unsafe_allow_html=True)
+        df_t2 = df_capitulos[[col_desc, c_proy_v, c_aseg_v, 'VAR_ASEG_%', 'Observaciones']].copy() if c_proy_v and c_aseg_v else pd.DataFrame()
         if not df_t2.empty:
-            df_t2.columns = ['Capítulo', 'Proyectado', 'Comprado', 'Diferencia (%)', 'Observaciones']
+            df_t2.columns = ['Capítulo', 'Proyectado', 'Asegurado', 'Diferencia (%)', 'Observaciones']
             st.data_editor(
                 df_t2, 
                 column_config={
                     "Proyectado": st.column_config.NumberColumn(format="$ %,.0f"),
-                    "Comprado": st.column_config.NumberColumn(format="$ %,.0f"),
+                    "Asegurado": st.column_config.NumberColumn(format="$ %,.0f"),
                     "Diferencia (%)": st.column_config.NumberColumn(format="%.1f %%"),
                     "Observaciones": st.column_config.TextColumn(help="Doble clic para escribir")
                 }, 
                 use_container_width=True, 
                 hide_index=True,
                 height=altura_dinamica,
-                key="tabla_comp"
+                key="tabla_aseg"
             )
 
         # ==========================================
@@ -290,6 +307,8 @@ if uploaded_file is not None:
             item = st.selectbox("Seleccione el capítulo a destacar (Opcional):", opciones)
             obs = st.text_area("Conclusiones Generales del Proyecto:", height=110)
         with col_der:
+            # Agregado el campo para el nombre del auditor
+            nombre_auditor = st.text_input("👤 Nombre del Auditor:")
             st.write("**Firma Responsable:**")
             st_canvas(
                 fill_color="rgba(140, 198, 63, 0.3)", stroke_width=2, stroke_color="#002856",
@@ -299,7 +318,10 @@ if uploaded_file is not None:
         col_bot1, col_bot2 = st.columns([1, 1])
         with col_bot1:
             if st.button("💾 Guardar Auditoría", type="primary"):
-                st.success("Guardado con éxito en la base de datos.")
+                if nombre_auditor:
+                    st.success(f"Guardado con éxito por el auditor: {nombre_auditor}.")
+                else:
+                    st.warning("Auditoría guardada, pero no se especificó un nombre de auditor.")
                 
         with col_bot2:
             components.html(
