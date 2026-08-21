@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import re
+import altair as alt
 from streamlit_drawable_canvas import st_canvas
 import streamlit.components.v1 as components
 
@@ -74,10 +75,8 @@ div[data-testid="metric-container"] {
     
     .block-container { max-width: 100% !important; padding: 1rem !important; }
     
-    /* Forzar que las tablas se expandan al 100% sin scroll al imprimir */
     .stDataFrame, .stDataFrame > div { height: auto !important; max-height: none !important; overflow: visible !important; }
     
-    /* MAGIA: Forzar que todas las pestañas (tabs) se impriman una debajo de la otra */
     .stTabs [data-baseweb="tab-panel"] { display: block !important; visibility: visible !important; height: auto !important; }
     .stTabs [role="tablist"] { display: none !important; } 
     
@@ -172,7 +171,7 @@ if uploaded_file is not None:
             tot_aseg = df[c_aseg_v].sum() if c_aseg_v else 0
             tot_cons = df[c_cons_v].sum() if c_cons_v else 0
 
-        # TARJETAS DE MÉTRICAS (En miles)
+        # TARJETAS DE MÉTRICAS
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
         kpi1.metric("Presupuesto (Miles)", f"${(tot_pres/1000):,.0f}")
         kpi2.metric("Proyectado (Miles)", f"${(tot_proy/1000):,.0f}", f"${((tot_proy - tot_pres)/1000):,.0f} vs Pres", delta_color="inverse")
@@ -257,7 +256,6 @@ if uploaded_file is not None:
             
             todos_los_capitulos = df_capitulos[col_desc].dropna().unique().tolist() if not df_capitulos.empty else []
             
-            # --- MEJORA UX: SELECTOR DE MODO DE FILTRO ---
             modo_filtro = st.radio("Configuración de Visualización:", ["Mostrar Todos los Capítulos", "Seleccionar Manualmente"], horizontal=True)
             
             if modo_filtro == "Mostrar Todos los Capítulos":
@@ -266,10 +264,12 @@ if uploaded_file is not None:
                 capitulos_seleccionados = st.multiselect(
                     "🔍 Selecciona los Capítulos que deseas analizar:", 
                     options=todos_los_capitulos, 
-                    default=[]  # Inicia vacío para que puedas elegir rápidamente
+                    default=[]  
                 )
 
-            # GRÁFICA 1: VALORES EN MILES
+            # ----------------------------------------------------
+            # GRÁFICA 1: VALORES EN MILES (AGRUPADAS Y CON MONEDA)
+            # ----------------------------------------------------
             cols_grafica = []
             nombres_grafica = []
             if c_pres_v: cols_grafica.append(c_pres_v); nombres_grafica.append("Presupuestado")
@@ -281,41 +281,80 @@ if uploaded_file is not None:
                 df_grafica.columns = nombres_grafica
                 df_grafica.index.name = "Capítulo" 
                 
-                df_grafica_filtrada = df_grafica[df_grafica.index.isin(capitulos_seleccionados)]
+                df_grafica_filtrada = df_grafica[df_grafica.index.isin(capitulos_seleccionados)].reset_index()
+                
+                # Transformamos los datos para Altair
+                df_fin_melt = df_grafica_filtrada.melt(id_vars="Capítulo", var_name="Métrica", value_name="Valor")
                 colores_coninsa = ["#002856", "#8CC63F", "#FFC112"][:len(cols_grafica)]
                 
                 st.markdown("**Cifras Financieras (En Miles)**")
-                try: st.bar_chart(df_grafica_filtrada, use_container_width=True, color=colores_coninsa)
-                except: st.bar_chart(df_grafica_filtrada, use_container_width=True)
+                chart_fin = alt.Chart(df_fin_melt).mark_bar().encode(
+                    x=alt.X('Capítulo:N', title="", axis=alt.Axis(labelAngle=-45)),
+                    xOffset='Métrica:N', # Esto desapila las barras
+                    y=alt.Y('Valor:Q', title="Valor ($ Miles)", axis=alt.Axis(format="$,.0f")),
+                    color=alt.Color('Métrica:N', scale=alt.Scale(domain=nombres_grafica, range=colores_coninsa), legend=alt.Legend(title="Métrica")),
+                    tooltip=['Capítulo', 'Métrica', alt.Tooltip('Valor:Q', title='Miles', format="$,.0f")]
+                )
+                st.altair_chart(chart_fin, use_container_width=True)
 
-            # GRÁFICA 2: PORCENTAJES DE VARIACIÓN
+            # ----------------------------------------------------
+            # GRÁFICA 2: PORCENTAJES CON TEXTO DENTRO
+            # ----------------------------------------------------
             cols_porcentajes = []
             nombres_pct = []
             
-            # Cálculo de porcentajes para la gráfica
             if c_proy_v and c_aseg_v:
-                df_capitulos['% Proy vs Aseg'] = np.where(df_capitulos[c_aseg_v] > 0, ((df_capitulos[c_proy_v] - df_capitulos[c_aseg_v]) / df_capitulos[c_aseg_v]) * 100, 0.0)
+                df_capitulos['% Proy vs Aseg'] = np.where(df_capitulos[c_aseg_v] > 0, (df_capitulos[c_proy_v] - df_capitulos[c_aseg_v]) / df_capitulos[c_aseg_v], 0.0)
                 cols_porcentajes.append('% Proy vs Aseg')
-                nombres_pct.append("Proyectado vs Asegurado (%)")
+                nombres_pct.append("Proyectado vs Asegurado")
                 
             if c_cons_v and c_proy_v:
-                df_capitulos['% Cons vs Proy'] = np.where(df_capitulos[c_proy_v] > 0, ((df_capitulos[c_cons_v] - df_capitulos[c_proy_v]) / df_capitulos[c_proy_v]) * 100, 0.0)
+                df_capitulos['% Cons vs Proy'] = np.where(df_capitulos[c_proy_v] > 0, (df_capitulos[c_cons_v] - df_capitulos[c_proy_v]) / df_capitulos[c_proy_v], 0.0)
                 cols_porcentajes.append('% Cons vs Proy')
-                nombres_pct.append("Consumido vs Proyectado (%)")
+                nombres_pct.append("Consumido vs Proyectado")
                 
             if cols_porcentajes and not df_capitulos.empty and capitulos_seleccionados:
                 df_grafica_pct = df_capitulos.set_index(col_desc)[cols_porcentajes].copy()
                 df_grafica_pct.columns = nombres_pct
                 df_grafica_pct.index.name = "Capítulo"
                 
-                df_grafica_pct_filtrada = df_grafica_pct[df_grafica_pct.index.isin(capitulos_seleccionados)]
+                df_grafica_pct_filtrada = df_grafica_pct[df_grafica_pct.index.isin(capitulos_seleccionados)].reset_index()
+                df_pct_melt = df_grafica_pct_filtrada.melt(id_vars="Capítulo", var_name="Métrica", value_name="Porcentaje")
                 
-                # Colores que resaltan variaciones (Naranja y Azul vibrante)
+                # TRUCO: Creamos una coordenada exacta en el centro (mitad) de cada barra para colocar el texto
+                df_pct_melt['Posicion_Texto'] = df_pct_melt['Porcentaje'] / 2
+                
                 colores_pct = ["#E74C3C", "#3498DB"][:len(cols_porcentajes)]
                 
                 st.markdown("**Análisis de Variaciones (%)**")
-                try: st.bar_chart(df_grafica_pct_filtrada, use_container_width=True, color=colores_pct)
-                except: st.bar_chart(df_grafica_pct_filtrada, use_container_width=True)
+                
+                base_pct = alt.Chart(df_pct_melt).encode(
+                    x=alt.X('Capítulo:N', title="", axis=alt.Axis(labelAngle=-45)),
+                    xOffset='Métrica:N', # Esto desapila las barras
+                    color=alt.Color('Métrica:N', scale=alt.Scale(domain=nombres_pct, range=colores_pct), legend=alt.Legend(title="Indicador")),
+                    tooltip=['Capítulo', 'Métrica', alt.Tooltip('Porcentaje:Q', format=".1%")]
+                )
+                
+                # Capa 1: Las Barras
+                bar_pct = base_pct.mark_bar().encode(
+                    y=alt.Y('Porcentaje:Q', title="Variación (%)", axis=alt.Axis(format=".1%"))
+                )
+                
+                # Capa 2: El Texto DENTRO de las barras
+                text_pct = base_pct.mark_text(
+                    align='center',
+                    baseline='middle',
+                    color='white',
+                    fontWeight='bold',
+                    fontSize=11
+                ).encode(
+                    y=alt.Y('Posicion_Texto:Q'), # Usa la mitad de la barra para centrarse
+                    text=alt.Text('Porcentaje:Q', format=".1%")
+                )
+                
+                chart_pct = (bar_pct + text_pct).configure_view(strokeWidth=0)
+                st.altair_chart(chart_pct, use_container_width=True)
+                
             elif not capitulos_seleccionados:
                 st.info("👈 Selecciona al menos un capítulo en el filtro para ver las gráficas.")
             
@@ -353,19 +392,14 @@ if uploaded_file is not None:
                 st.success(f"Auditoría cerrada con éxito por {nombre_auditor if nombre_auditor else 'el auditor'}.")
                 
         with col_bot2:
-            # BOTÓN DE IMPRESIÓN MEJORADO PARA STREAMLIT CLOUD
             components.html(
                 """
                 <script>
                 function printPage() {
-                    try {
-                        window.parent.print();
-                    } catch (e) {
-                        try {
-                            window.top.print();
-                        } catch (e2) {
-                            window.print();
-                        }
+                    try { window.parent.print(); } 
+                    catch (e) {
+                        try { window.top.print(); } 
+                        catch (e2) { window.print(); }
                     }
                 }
                 </script>
