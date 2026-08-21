@@ -283,35 +283,35 @@ if uploaded_file is not None:
                 
                 df_grafica_filtrada = df_grafica[df_grafica.index.isin(capitulos_seleccionados)].reset_index()
                 
-                # Transformamos los datos para Altair
                 df_fin_melt = df_grafica_filtrada.melt(id_vars="Capítulo", var_name="Métrica", value_name="Valor")
                 colores_coninsa = ["#002856", "#8CC63F", "#FFC112"][:len(cols_grafica)]
                 
                 st.markdown("**Cifras Financieras (En Miles)**")
                 chart_fin = alt.Chart(df_fin_melt).mark_bar().encode(
                     x=alt.X('Capítulo:N', title="", axis=alt.Axis(labelAngle=-45)),
-                    xOffset='Métrica:N', # Esto desapila las barras
+                    xOffset='Métrica:N', 
                     y=alt.Y('Valor:Q', title="Valor ($ Miles)", axis=alt.Axis(format="$,.0f")),
-                    color=alt.Color('Métrica:N', scale=alt.Scale(domain=nombres_grafica, range=colores_coninsa), legend=alt.Legend(title="Métrica")),
+                    color=alt.Color('Métrica:N', scale=alt.Scale(domain=nombres_grafica, range=colores_coninsa), legend=alt.Legend(title="Métrica", orient="top")),
                     tooltip=['Capítulo', 'Métrica', alt.Tooltip('Valor:Q', title='Miles', format="$,.0f")]
                 )
                 st.altair_chart(chart_fin, use_container_width=True)
 
             # ----------------------------------------------------
-            # GRÁFICA 2: PORCENTAJES CON TEXTO DENTRO
+            # GRÁFICA 2: ÍNDICE DE EJECUCIÓN (%)
             # ----------------------------------------------------
             cols_porcentajes = []
             nombres_pct = []
             
+            # NUEVO CÁLCULO: División directa sobre el Proyectado
             if c_proy_v and c_aseg_v:
-                df_capitulos['% Proy vs Aseg'] = np.where(df_capitulos[c_aseg_v] > 0, (df_capitulos[c_proy_v] - df_capitulos[c_aseg_v]) / df_capitulos[c_aseg_v], 0.0)
-                cols_porcentajes.append('% Proy vs Aseg')
-                nombres_pct.append("Proyectado vs Asegurado")
+                df_capitulos['% Aseg vs Proy'] = np.where(df_capitulos[c_proy_v] > 0, df_capitulos[c_aseg_v] / df_capitulos[c_proy_v], 0.0)
+                cols_porcentajes.append('% Aseg vs Proy')
+                nombres_pct.append("Asegurado / Proyectado")
                 
             if c_cons_v and c_proy_v:
-                df_capitulos['% Cons vs Proy'] = np.where(df_capitulos[c_proy_v] > 0, (df_capitulos[c_cons_v] - df_capitulos[c_proy_v]) / df_capitulos[c_proy_v], 0.0)
+                df_capitulos['% Cons vs Proy'] = np.where(df_capitulos[c_proy_v] > 0, df_capitulos[c_cons_v] / df_capitulos[c_proy_v], 0.0)
                 cols_porcentajes.append('% Cons vs Proy')
-                nombres_pct.append("Consumido vs Proyectado")
+                nombres_pct.append("Consumido / Proyectado")
                 
             if cols_porcentajes and not df_capitulos.empty and capitulos_seleccionados:
                 df_grafica_pct = df_capitulos.set_index(col_desc)[cols_porcentajes].copy()
@@ -321,26 +321,24 @@ if uploaded_file is not None:
                 df_grafica_pct_filtrada = df_grafica_pct[df_grafica_pct.index.isin(capitulos_seleccionados)].reset_index()
                 df_pct_melt = df_grafica_pct_filtrada.melt(id_vars="Capítulo", var_name="Métrica", value_name="Porcentaje")
                 
-                # TRUCO: Creamos una coordenada exacta en el centro (mitad) de cada barra para colocar el texto
+                # Ubicación exacta en el centro de la barra
                 df_pct_melt['Posicion_Texto'] = df_pct_melt['Porcentaje'] / 2
                 
                 colores_pct = ["#E74C3C", "#3498DB"][:len(cols_porcentajes)]
                 
-                st.markdown("**Análisis de Variaciones (%)**")
+                st.markdown("**Índices de Ejecución (%)**")
                 
                 base_pct = alt.Chart(df_pct_melt).encode(
                     x=alt.X('Capítulo:N', title="", axis=alt.Axis(labelAngle=-45)),
-                    xOffset='Métrica:N', # Esto desapila las barras
-                    color=alt.Color('Métrica:N', scale=alt.Scale(domain=nombres_pct, range=colores_pct), legend=alt.Legend(title="Indicador")),
+                    xOffset='Métrica:N', 
+                    color=alt.Color('Métrica:N', scale=alt.Scale(domain=nombres_pct, range=colores_pct), legend=alt.Legend(title="Indicador", orient="top")),
                     tooltip=['Capítulo', 'Métrica', alt.Tooltip('Porcentaje:Q', format=".1%")]
                 )
                 
-                # Capa 1: Las Barras
                 bar_pct = base_pct.mark_bar().encode(
-                    y=alt.Y('Porcentaje:Q', title="Variación (%)", axis=alt.Axis(format=".1%"))
+                    y=alt.Y('Porcentaje:Q', title="Porcentaje (%)", axis=alt.Axis(format=".0%"))
                 )
                 
-                # Capa 2: El Texto DENTRO de las barras
                 text_pct = base_pct.mark_text(
                     align='center',
                     baseline='middle',
@@ -348,7 +346,7 @@ if uploaded_file is not None:
                     fontWeight='bold',
                     fontSize=11
                 ).encode(
-                    y=alt.Y('Posicion_Texto:Q'), # Usa la mitad de la barra para centrarse
+                    y=alt.Y('Posicion_Texto:Q'), 
                     text=alt.Text('Porcentaje:Q', format=".1%")
                 )
                 
