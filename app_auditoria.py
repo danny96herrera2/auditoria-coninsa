@@ -78,7 +78,7 @@ div[data-testid="metric-container"] {
     .stDataFrame, .stDataFrame > div { height: auto !important; max-height: none !important; overflow: visible !important; }
     
     /* MAGIA: Forzar que todas las pestañas (tabs) se impriman una debajo de la otra */
-    .stTabs [data-baseweb="tab-panel"] { display: block !important; visibility: visible !important; }
+    .stTabs [data-baseweb="tab-panel"] { display: block !important; visibility: visible !important; height: auto !important; }
     .stTabs [role="tablist"] { display: none !important; } 
     
     .salto-impresion { page-break-before: always; }
@@ -214,7 +214,7 @@ if uploaded_file is not None:
             else: df_datos['VAR_ASEG_%'] = 0.0
 
             df_datos['Observaciones'] = ""
-            altura_dinamica = min(max((len(df_datos) * 36) + 40, 200), 800) 
+            altura_dinamica = max((len(df_datos) * 38) + 45, 150) 
 
             st.markdown('<div class="titulo-tabla">1. PROYECTADO VS PRESUPUESTADO</div>', unsafe_allow_html=True)
             df_t1 = df_datos[[col_desc, c_pres_v, c_proy_v, 'VAR_PPTO_%', 'Observaciones']].copy() if c_pres_v and c_proy_v else pd.DataFrame()
@@ -256,28 +256,68 @@ if uploaded_file is not None:
             st.markdown('<div class="subtitulo">📊 COMPARATIVA GERENCIAL (Capítulos)</div>', unsafe_allow_html=True)
             
             todos_los_capitulos = df_capitulos[col_desc].dropna().unique().tolist() if not df_capitulos.empty else []
-            capitulos_seleccionados = st.multiselect(
-                "🔍 Filtra los Capítulos de la gráfica:", 
-                options=todos_los_capitulos, default=todos_los_capitulos
-            )
+            
+            # --- MEJORA UX: SELECTOR DE MODO DE FILTRO ---
+            modo_filtro = st.radio("Configuración de Visualización:", ["Mostrar Todos los Capítulos", "Seleccionar Manualmente"], horizontal=True)
+            
+            if modo_filtro == "Mostrar Todos los Capítulos":
+                capitulos_seleccionados = todos_los_capitulos
+            else:
+                capitulos_seleccionados = st.multiselect(
+                    "🔍 Selecciona los Capítulos que deseas analizar:", 
+                    options=todos_los_capitulos, 
+                    default=[]  # Inicia vacío para que puedas elegir rápidamente
+                )
 
+            # GRÁFICA 1: VALORES EN MILES
             cols_grafica = []
             nombres_grafica = []
             if c_pres_v: cols_grafica.append(c_pres_v); nombres_grafica.append("Presupuestado")
             if c_proy_v: cols_grafica.append(c_proy_v); nombres_grafica.append("Proyectado")
             if c_aseg_v: cols_grafica.append(c_aseg_v); nombres_grafica.append("Asegurado")
             
-            if cols_grafica and not df_capitulos.empty:
+            if cols_grafica and not df_capitulos.empty and capitulos_seleccionados:
                 df_grafica = df_capitulos.set_index(col_desc)[cols_grafica].copy()
                 df_grafica.columns = nombres_grafica
-                
                 df_grafica.index.name = "Capítulo" 
                 
                 df_grafica_filtrada = df_grafica[df_grafica.index.isin(capitulos_seleccionados)]
-                
                 colores_coninsa = ["#002856", "#8CC63F", "#FFC112"][:len(cols_grafica)]
+                
+                st.markdown("**Cifras Financieras (En Miles)**")
                 try: st.bar_chart(df_grafica_filtrada, use_container_width=True, color=colores_coninsa)
                 except: st.bar_chart(df_grafica_filtrada, use_container_width=True)
+
+            # GRÁFICA 2: PORCENTAJES DE VARIACIÓN
+            cols_porcentajes = []
+            nombres_pct = []
+            
+            # Cálculo de porcentajes para la gráfica
+            if c_proy_v and c_aseg_v:
+                df_capitulos['% Proy vs Aseg'] = np.where(df_capitulos[c_aseg_v] > 0, ((df_capitulos[c_proy_v] - df_capitulos[c_aseg_v]) / df_capitulos[c_aseg_v]) * 100, 0.0)
+                cols_porcentajes.append('% Proy vs Aseg')
+                nombres_pct.append("Proyectado vs Asegurado (%)")
+                
+            if c_cons_v and c_proy_v:
+                df_capitulos['% Cons vs Proy'] = np.where(df_capitulos[c_proy_v] > 0, ((df_capitulos[c_cons_v] - df_capitulos[c_proy_v]) / df_capitulos[c_proy_v]) * 100, 0.0)
+                cols_porcentajes.append('% Cons vs Proy')
+                nombres_pct.append("Consumido vs Proyectado (%)")
+                
+            if cols_porcentajes and not df_capitulos.empty and capitulos_seleccionados:
+                df_grafica_pct = df_capitulos.set_index(col_desc)[cols_porcentajes].copy()
+                df_grafica_pct.columns = nombres_pct
+                df_grafica_pct.index.name = "Capítulo"
+                
+                df_grafica_pct_filtrada = df_grafica_pct[df_grafica_pct.index.isin(capitulos_seleccionados)]
+                
+                # Colores que resaltan variaciones (Naranja y Azul vibrante)
+                colores_pct = ["#E74C3C", "#3498DB"][:len(cols_porcentajes)]
+                
+                st.markdown("**Análisis de Variaciones (%)**")
+                try: st.bar_chart(df_grafica_pct_filtrada, use_container_width=True, color=colores_pct)
+                except: st.bar_chart(df_grafica_pct_filtrada, use_container_width=True)
+            elif not capitulos_seleccionados:
+                st.info("👈 Selecciona al menos un capítulo en el filtro para ver las gráficas.")
             
             st.markdown('<div class="subtitulo">📋 TABLAS DE CONTROL - Nivel Capítulo</div>', unsafe_allow_html=True)
             generar_tablas(df_capitulos, "capitulos")
