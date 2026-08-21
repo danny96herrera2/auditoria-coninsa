@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import re
+from datetime import datetime
 import altair as alt
 from streamlit_drawable_canvas import st_canvas
 import streamlit.components.v1 as components
@@ -61,9 +62,7 @@ div[data-testid="metric-container"] {
     margin-bottom: 10px;
 }
 
-/* ==========================================
-   REGLAS MÁGICAS PARA IMPRESIÓN (PDF)
-   ========================================== */
+/* REGLAS MÁGICAS PARA IMPRESIÓN (PDF) */
 @media print {
     section[data-testid="stSidebar"] { display: none !important; }
     header[data-testid="stHeader"] { display: none !important; }
@@ -85,9 +84,11 @@ div[data-testid="metric-container"] {
 </style>
 """, unsafe_allow_html=True)
 
-# 3. CARGA DE DATOS
+# 3. CARGA DE DATOS MULTI-ARCHIVO
 st.sidebar.markdown("<h2 style='color: #002856; text-align: center;'>Panel de Control</h2>", unsafe_allow_html=True)
-uploaded_file = st.sidebar.file_uploader("Sube el archivo Excel (.xls / .xlsx)", type=['xls', 'xlsx'])
+uploaded_file = st.sidebar.file_uploader("1. Archivo PRINCIPAL (.xls / .xlsx)", type=['xls', 'xlsx'])
+st.sidebar.markdown("---")
+uploaded_causas = st.sidebar.file_uploader("2. Archivo CAUSAS (Opcional)", type=['xls', 'xlsx'], help="Sube el archivo de Causas para sumar automáticamente el ajuste de BASE PPTO.")
 
 def limpiar_numero(valor):
     if pd.isna(valor): return 0.0
@@ -98,9 +99,81 @@ def limpiar_numero(valor):
     try: return float(val_str)
     except: return 0.0
 
+def extraer_ajuste_causas(file_causas):
+    file_causas.seek(0)
+    try:
+        dfs = pd.read_html(file_causas)
+        df_c = dfs[0]
+    except:
+        file_causas.seek(0)
+        df_c = pd.read_excel(file_causas, engine='openpyxl' if file_causas.name.endswith('xlsx') else None)
+        
+    # Limpiar columnas multinivel
+    clean_cols_c = []
+    for col in df_c.columns:
+        if isinstance(col, tuple):
+            levels = [str(x).strip() for x in col if "Unnamed" not in str(x)]
+            final_levels = []
+            for lvl in levels:
+                if not final_levels or final_levels[-1] != lvl:
+                    final_levels.append(lvl)
+            clean_cols_c.append(" ".join(final_levels))
+        else:
+            clean_cols_c.append(str(col))
+    df_c.columns = clean_cols_c
+
+    # Detector de meses en español
+    meses_es = {'Enero': 1, 'Febrero': 2, 'Marzo': 3, 'Abril': 4, 'Mayo': 5, 'Junio': 6, 
+                'Julio': 7, 'Agosto': 8, 'Septiembre': 9, 'Octubre': 10, 'Noviembre': 11, 'Diciembre': 12}
+    
+    date_cols = {}
+    for col in df_c.columns:
+        match = re.search(r'([A-Za-z]+)-(\d{2,4})', col)
+        if match:
+            mes_str = match.group(1).capitalize()
+            year_str = match.group(2)
+            if mes_str in meses_es:
+                year = int(year_str)
+                if year < 100:
+                    year += 2000
+                date_cols[col] = datetime(year, meses_es[mes_str], 1)
+                
+    if not date_cols:
+        return 0.0, "Sin fechas detectadas"
+        
+    # Buscar la fecha más reciente (la más cercana a hoy)
+    hoy = datetime.now()
+    most_recent_col = min(date_cols, key=lambda k: abs((date_cols[k] - hoy).days))
+    
+    # Buscar la fila "BASE PPTO"
+    col_desc_c = df_c.columns[0]
+    base_row = df_c[df_c[col_desc_c].astype(str).str.upper().str.contains("BASE PPTO", na=False)]
+    
+    if not base_row.empty:
+        val = base_row.iloc[-1][most_recent_col]
+        try:
+            return float(str(val).replace(',', '').replace('$', '').strip()), most_recent_col
+        except:
+            return 0.0, most_recent_col
+            
+    return 0.0, most_recent_col
+
 if uploaded_file is not None:
     try:
-        # LECTURA DE DATOS
+        # ==========================================
+        # EXTRACCIÓN DEL ARCHIVO DE CAUSAS (SI EXISTE)
+        # ==========================================
+        ajuste_ppto = 0.0
+        info_col_causas = ""
+        if uploaded_causas is not None:
+            try:
+                ajuste_ppto, info_col_causas = extraer_ajuste_causas(uploaded_causas)
+            except Exception as e:
+                st.sidebar.warning(f"Error leyendo el archivo de Causas: {e}")
+
+        # ==========================================
+        # LECTURA DEL ARCHIVO PRINCIPAL
+        # ==========================================
         uploaded_file.seek(0)
         try:
             dfs = pd.read_html(uploaded_file)
@@ -121,7 +194,6 @@ if uploaded_file is not None:
             uploaded_file.seek(0)
             df = pd.read_excel(uploaded_file, engine='openpyxl' if uploaded_file.name.endswith('xlsx') else None)
 
-        # NOMBRE DEL PROYECTO
         nombre_proyecto = "PROYECTO EN AUDITORÍA"
         for c in df.columns:
             if "-" in str(c) and len(str(c)) > 10 and "UNNAMED" not in str(c).upper():
@@ -135,7 +207,6 @@ if uploaded_file is not None:
         </div>
         """, unsafe_allow_html=True)
 
-        # COLUMNAS FLEXIBLES
         df.columns = [str(c).upper() for c in df.columns]
         
         def encontrar_col(palabras):
@@ -156,7 +227,7 @@ if uploaded_file is not None:
         for c in cols_num:
             df[c] = df[c].apply(limpiar_numero)
 
-        # TOTALES GENERALES
+        # TOTALES GENERALES Y APLICACIÓN DE AJUSTE
         df[col_desc] = df[col_desc].fillna("")
         fila_total = df[df[col_desc].astype(str).str.upper().str.contains("TOTAL", na=False)]
         
@@ -171,9 +242,19 @@ if uploaded_file is not None:
             tot_aseg = df[c_aseg_v].sum() if c_aseg_v else 0
             tot_cons = df[c_cons_v].sum() if c_cons_v else 0
 
-        # TARJETAS DE MÉTRICAS
+        # === SUMAMOS EL AJUSTE DEL ARCHIVO DE CAUSAS ===
+        tot_pres += ajuste_ppto
+
+        # TARJETAS DE MÉTRICAS (Con información de ajuste)
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-        kpi1.metric("Presupuesto (Miles)", f"${(tot_pres/1000):,.0f}")
+        
+        if ajuste_ppto != 0:
+            match_mes = re.search(r'([A-Za-z]+-\d{2,4})', info_col_causas)
+            mes_label = match_mes.group(1).capitalize() if match_mes else "Causas"
+            kpi1.metric("Presupuesto (Miles)", f"${(tot_pres/1000):,.0f}", f"+ ${(ajuste_ppto/1000):,.0f} Ajuste ({mes_label})", delta_color="off")
+        else:
+            kpi1.metric("Presupuesto (Miles)", f"${(tot_pres/1000):,.0f}")
+            
         kpi2.metric("Proyectado (Miles)", f"${(tot_proy/1000):,.0f}", f"${((tot_proy - tot_pres)/1000):,.0f} vs Pres", delta_color="inverse")
         kpi3.metric("Asegurado (Miles)", f"${(tot_aseg/1000):,.0f}")
         kpi4.metric("Consumido (Miles)", f"${(tot_cons/1000):,.0f}", f"${((tot_cons - tot_aseg)/1000):,.0f} vs Aseg", delta_color="inverse")
@@ -267,9 +348,7 @@ if uploaded_file is not None:
                     default=[]  
                 )
 
-            # ----------------------------------------------------
-            # GRÁFICA 1: VALORES EN MILES (AGRUPADAS Y CON MONEDA)
-            # ----------------------------------------------------
+            # GRÁFICA 1: VALORES EN MILES
             cols_grafica = []
             nombres_grafica = []
             if c_pres_v: cols_grafica.append(c_pres_v); nombres_grafica.append("Presupuestado")
@@ -296,13 +375,10 @@ if uploaded_file is not None:
                 )
                 st.altair_chart(chart_fin, use_container_width=True)
 
-            # ----------------------------------------------------
             # GRÁFICA 2: ÍNDICE DE EJECUCIÓN (%)
-            # ----------------------------------------------------
             cols_porcentajes = []
             nombres_pct = []
             
-            # NUEVO CÁLCULO: División directa sobre el Proyectado
             if c_proy_v and c_aseg_v:
                 df_capitulos['% Aseg vs Proy'] = np.where(df_capitulos[c_proy_v] > 0, df_capitulos[c_aseg_v] / df_capitulos[c_proy_v], 0.0)
                 cols_porcentajes.append('% Aseg vs Proy')
@@ -321,7 +397,6 @@ if uploaded_file is not None:
                 df_grafica_pct_filtrada = df_grafica_pct[df_grafica_pct.index.isin(capitulos_seleccionados)].reset_index()
                 df_pct_melt = df_grafica_pct_filtrada.melt(id_vars="Capítulo", var_name="Métrica", value_name="Porcentaje")
                 
-                # Ubicación exacta en el centro de la barra
                 df_pct_melt['Posicion_Texto'] = df_pct_melt['Porcentaje'] / 2
                 
                 colores_pct = ["#E74C3C", "#3498DB"][:len(cols_porcentajes)]
