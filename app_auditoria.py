@@ -234,25 +234,27 @@ if uploaded_file is not None:
         # === APLICACIÓN DE AJUSTE AL TOTAL PRESUPUESTO ===
         tot_pres += ajuste_ppto
 
-        # TARJETAS DE MÉTRICAS (Con porcentaje simple en Proyectado)
-        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+        # ==========================================
+        # TARJETAS DE MÉTRICAS (5 Columnas)
+        # ==========================================
+        kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
         
         if ajuste_ppto != 0:
             match_mes = re.search(r'([A-Za-z]+-\d{2,4})', info_col_causas)
             mes_label = match_mes.group(1).capitalize() if match_mes else "Causas"
-            kpi1.metric("Presupuesto + Reajuste (Miles)", f"${(tot_pres/1000):,.0f}", f"+ ${(ajuste_ppto/1000):,.0f} Ajuste ({mes_label})", delta_color="off")
+            kpi1.metric("Ppto + Reajuste (Miles)", f"${(tot_pres/1000):,.0f}", f"+ ${(ajuste_ppto/1000):,.0f} ({mes_label})", delta_color="off")
         else:
             kpi1.metric("Presupuesto (Miles)", f"${(tot_pres/1000):,.0f}")
             
-        # Cálculo del porcentaje simple: (Proyectado - Presupuesto Ajustado) / Presupuesto Ajustado
-        pct_dif_proy = ((tot_proy - tot_pres) / tot_pres * 100) if tot_pres > 0 else 0
+        kpi2.metric("Proyectado (Miles)", f"${(tot_proy/1000):,.0f}", f"${((tot_proy - tot_pres)/1000):,.0f} vs Pres", delta_color="inverse")
         
-        # Etiqueta combinada para mostrar el valor monetario y el porcentaje
-        delta_proy_str = f"${((tot_proy - tot_pres)/1000):,.0f} ({pct_dif_proy:+.1f}%) vs Pres"
-            
-        kpi2.metric("Proyectado (Miles)", f"${(tot_proy/1000):,.0f}", delta_proy_str, delta_color="inverse")
-        kpi3.metric("Asegurado (Miles)", f"${(tot_aseg/1000):,.0f}")
-        kpi4.metric("Consumido (Miles)", f"${(tot_cons/1000):,.0f}", f"${((tot_cons - tot_aseg)/1000):,.0f} vs Aseg", delta_color="inverse")
+        # --- NUEVA TARJETA INDEPENDIENTE Y GRANDE PARA EL ÍNDICE ---
+        idx_proy = (tot_proy / tot_pres * 100) if tot_pres > 0 else 0
+        dif_idx = idx_proy - 100
+        kpi3.metric("Índice Proy/Ppto", f"{idx_proy:,.1f}%", f"{dif_idx:+.1f}% de Desviación", delta_color="inverse")
+        
+        kpi4.metric("Asegurado (Miles)", f"${(tot_aseg/1000):,.0f}")
+        kpi5.metric("Consumido (Miles)", f"${(tot_cons/1000):,.0f}", f"${((tot_cons - tot_aseg)/1000):,.0f} vs Aseg", delta_color="inverse")
         
         # ==========================================
         # FILTRO INTELIGENTE: CAPÍTULOS VS ÍTEMS
