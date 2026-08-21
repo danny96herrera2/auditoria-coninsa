@@ -108,7 +108,6 @@ def extraer_ajuste_causas(file_causas):
         file_causas.seek(0)
         df_c = pd.read_excel(file_causas, engine='openpyxl' if file_causas.name.endswith('xlsx') else None)
         
-    # Limpiar columnas multinivel
     clean_cols_c = []
     for col in df_c.columns:
         if isinstance(col, tuple):
@@ -122,7 +121,6 @@ def extraer_ajuste_causas(file_causas):
             clean_cols_c.append(str(col))
     df_c.columns = clean_cols_c
 
-    # Detector de meses en español
     meses_es = {'Enero': 1, 'Febrero': 2, 'Marzo': 3, 'Abril': 4, 'Mayo': 5, 'Junio': 6, 
                 'Julio': 7, 'Agosto': 8, 'Septiembre': 9, 'Octubre': 10, 'Noviembre': 11, 'Diciembre': 12}
     
@@ -141,11 +139,9 @@ def extraer_ajuste_causas(file_causas):
     if not date_cols:
         return 0.0, "Sin fechas detectadas"
         
-    # Buscar la fecha más reciente (la más cercana a hoy)
     hoy = datetime.now()
     most_recent_col = min(date_cols, key=lambda k: abs((date_cols[k] - hoy).days))
     
-    # Buscar la fila "BASE PPTO"
     col_desc_c = df_c.columns[0]
     base_row = df_c[df_c[col_desc_c].astype(str).str.upper().str.contains("BASE PPTO", na=False)]
     
@@ -160,9 +156,6 @@ def extraer_ajuste_causas(file_causas):
 
 if uploaded_file is not None:
     try:
-        # ==========================================
-        # EXTRACCIÓN DEL ARCHIVO DE CAUSAS (SI EXISTE)
-        # ==========================================
         ajuste_ppto = 0.0
         info_col_causas = ""
         if uploaded_causas is not None:
@@ -171,9 +164,6 @@ if uploaded_file is not None:
             except Exception as e:
                 st.sidebar.warning(f"Error leyendo el archivo de Causas: {e}")
 
-        # ==========================================
-        # LECTURA DEL ARCHIVO PRINCIPAL
-        # ==========================================
         uploaded_file.seek(0)
         try:
             dfs = pd.read_html(uploaded_file)
@@ -227,7 +217,6 @@ if uploaded_file is not None:
         for c in cols_num:
             df[c] = df[c].apply(limpiar_numero)
 
-        # TOTALES GENERALES Y APLICACIÓN DE AJUSTE
         df[col_desc] = df[col_desc].fillna("")
         fila_total = df[df[col_desc].astype(str).str.upper().str.contains("TOTAL", na=False)]
         
@@ -242,20 +231,26 @@ if uploaded_file is not None:
             tot_aseg = df[c_aseg_v].sum() if c_aseg_v else 0
             tot_cons = df[c_cons_v].sum() if c_cons_v else 0
 
-        # === SUMAMOS EL AJUSTE DEL ARCHIVO DE CAUSAS ===
+        # === APLICACIÓN DE AJUSTE AL TOTAL PRESUPUESTO ===
         tot_pres += ajuste_ppto
 
-        # TARJETAS DE MÉTRICAS (Con información de ajuste)
+        # TARJETAS DE MÉTRICAS (Con porcentaje simple en Proyectado)
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
         
         if ajuste_ppto != 0:
             match_mes = re.search(r'([A-Za-z]+-\d{2,4})', info_col_causas)
             mes_label = match_mes.group(1).capitalize() if match_mes else "Causas"
-            kpi1.metric("Presupuesto (Miles)", f"${(tot_pres/1000):,.0f}", f"+ ${(ajuste_ppto/1000):,.0f} Ajuste ({mes_label})", delta_color="off")
+            kpi1.metric("Presupuesto + Reajuste (Miles)", f"${(tot_pres/1000):,.0f}", f"+ ${(ajuste_ppto/1000):,.0f} Ajuste ({mes_label})", delta_color="off")
         else:
             kpi1.metric("Presupuesto (Miles)", f"${(tot_pres/1000):,.0f}")
             
-        kpi2.metric("Proyectado (Miles)", f"${(tot_proy/1000):,.0f}", f"${((tot_proy - tot_pres)/1000):,.0f} vs Pres", delta_color="inverse")
+        # Cálculo del porcentaje simple: (Proyectado - Presupuesto Ajustado) / Presupuesto Ajustado
+        pct_dif_proy = ((tot_proy - tot_pres) / tot_pres * 100) if tot_pres > 0 else 0
+        
+        # Etiqueta combinada para mostrar el valor monetario y el porcentaje
+        delta_proy_str = f"${((tot_proy - tot_pres)/1000):,.0f} ({pct_dif_proy:+.1f}%) vs Pres"
+            
+        kpi2.metric("Proyectado (Miles)", f"${(tot_proy/1000):,.0f}", delta_proy_str, delta_color="inverse")
         kpi3.metric("Asegurado (Miles)", f"${(tot_aseg/1000):,.0f}")
         kpi4.metric("Consumido (Miles)", f"${(tot_cons/1000):,.0f}", f"${((tot_cons - tot_aseg)/1000):,.0f} vs Aseg", delta_color="inverse")
         
