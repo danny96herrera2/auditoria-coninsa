@@ -242,13 +242,11 @@ if uploaded_file is not None:
             st.markdown('<div class="subtitulo">🗓️ % Programa Vs % Consumido</div>', unsafe_allow_html=True)
             st.info("Digita las fechas y los porcentajes. El sistema calculará los meses automáticamente y los enviará al banner superior.")
             
-            # Fila 1: Fechas (Inputs)
             c1, c2, c3 = st.columns(3)
             val_f_inicio = c1.date_input("Fecha inicio", value=None)
             val_f_fin = c2.date_input("Fecha fin", value=None)
             val_f_auditoria = c3.date_input("Fecha de auditoría", value=datetime.today())
 
-            # Cálculos automáticos de tiempos
             meses_tot = 0.0
             meses_ejec = 0.0
             meses_falt = 0.0
@@ -268,97 +266,87 @@ if uploaded_file is not None:
             </div>
             """, unsafe_allow_html=True)
 
-            # Fila 2: Porcentajes y Atraso (Inputs)
             c4, c5, c6 = st.columns(3)
             val_av_real = c4.number_input("% avance real", value=0.0, step=0.1, format="%.1f")
             val_av_prog = c5.number_input("% avance programado", value=0.0, step=0.1, format="%.1f")
             val_dias_atr = c6.number_input("Días de atraso", value=0, step=1)
 
         # ==========================================
-        # CONSTRUCCIÓN DEL BANNER HTML (SE INYECTA ARRIBA)
+        # CONSTRUCCIÓN DEL BANNER HTML (Corregido sin espacios al inicio)
         # ==========================================
-        html_banner = f"""
-        <div style="display: flex; width: 100%; gap: 15px; font-family: sans-serif; margin-bottom: 25px;">
-            
-            <!-- BLOQUE 1: VERDE OLIVO -->
-            <div style="display: flex; flex: 2.8; background-color: #9DBB61; padding: 15px; border-radius: 8px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1);">
-                <div style="flex: 1; text-align: center; border-right: 1px solid rgba(255,255,255,0.4); padding-right: 5px; display: flex; flex-direction: column; justify-content: center;">
-                    <div style="color: black; font-weight: 800; font-size: 1rem; line-height: 1.2;">Vr. PPTO<br>+Adicionales</div>
-                    <div style="color: white; font-weight: bold; font-size: 1.4rem; margin-top: 5px;">$ {tot_pres:,.0f}</div>
-                </div>
-                <div style="flex: 1; text-align: center; padding-left: 5px; display: flex; flex-direction: column; justify-content: center;">
-                    <div style="color: black; font-weight: 800; font-size: 1rem; line-height: 1.2;"><br>Vr. Proyección</div>
-                    <div style="color: white; font-weight: bold; font-size: 1.4rem; margin-top: 5px;">$ {tot_proy:,.0f}</div>
-                </div>
-                <div style="flex: 0.4; display: flex; align-items: center; justify-content: center; border-left: 4px solid white; margin-left: 15px; padding-left: 10px;">
-                    <span style="color: black; font-weight: 900; font-size: 1.3rem;">{idx_proy:,.0f}%</span>
-                </div>
-            </div>
-            
-            <!-- BLOQUE 2: BEIGE / VERDE CLARO -->
-            <div style="display: flex; flex-direction: column; flex: 4.2; gap: 8px;">
-                <div style="display: flex; gap: 8px; flex: 1;">
-                    <div style="flex: 1; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Consumido</div>
-                            <div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {tot_cons:,.0f}</div>
-                        </div>
-                        <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_cons:.0f}%</div>
-                    </div>
-                    <div style="flex: 1; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Asegurado</div>
-                            <div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {tot_aseg:,.0f}</div>
-                        </div>
-                        <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_aseg:.0f}%</div>
-                    </div>
-                </div>
-                <div style="display: flex; gap: 8px; flex: 1;">
-                    <div style="flex: 1.2; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Por consumir</div>
-                            <div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {por_consumir:,.0f}</div>
-                        </div>
-                        <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_por_consumir:.0f}%</div>
-                    </div>
-                    <div style="flex: 0.9; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center;">
-                        <div style="color: black; font-weight: 800; font-size: 0.9rem; text-align: center;">Imprevistos</div>
-                        <div style="color: #333; font-weight: bold; text-align: center; margin-top: 3px;">$ {val_imprevistos:,.0f}</div>
-                    </div>
-                    <div style="flex: 0.9; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center;">
-                        <div style="color: black; font-weight: 800; font-size: 0.9rem; text-align: center;">Reajustes</div>
-                        <div style="color: #333; font-weight: bold; text-align: center; margin-top: 3px;">$ {val_reajustes:,.0f}</div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- BLOQUE 3: VERDE OSCURO (TEAL) -->
-            <div style="display: flex; flex-direction: column; flex: 3; gap: 8px;">
-                <div style="display: flex; gap: 8px; flex: 1;">
-                    <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
-                        <div style="font-weight: 800; color: black; font-size: 0.85rem;">% avance real</div>
-                        <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_av_real}%</div>
-                    </div>
-                    <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
-                        <div style="font-weight: 800; color: black; font-size: 0.85rem;">Días de atraso</div>
-                        <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_dias_atr}</div>
-                    </div>
-                </div>
-                <div style="display: flex; gap: 8px; flex: 1;">
-                    <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
-                        <div style="font-weight: 800; color: black; font-size: 0.85rem;">% avance programado</div>
-                        <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_av_prog}%</div>
-                    </div>
-                    <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
-                        <div style="font-weight: 800; color: black; font-size: 0.85rem;">Meses faltantes</div>
-                        <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{meses_falt:.1f}</div>
-                    </div>
-                </div>
-            </div>
-            
-        </div>
-        """
-        # Inyectar el banner en el espacio reservado arriba
+        html_banner = f"""<div style="display: flex; width: 100%; gap: 15px; font-family: sans-serif; margin-bottom: 25px;">
+<div style="display: flex; flex: 2.8; background-color: #9DBB61; padding: 15px; border-radius: 8px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1);">
+<div style="flex: 1; text-align: center; border-right: 1px solid rgba(255,255,255,0.4); padding-right: 5px; display: flex; flex-direction: column; justify-content: center;">
+<div style="color: black; font-weight: 800; font-size: 1rem; line-height: 1.2;">Vr. PPTO<br>+Adicionales</div>
+<div style="color: white; font-weight: bold; font-size: 1.4rem; margin-top: 5px;">$ {tot_pres:,.0f}</div>
+</div>
+<div style="flex: 1; text-align: center; padding-left: 5px; display: flex; flex-direction: column; justify-content: center;">
+<div style="color: black; font-weight: 800; font-size: 1rem; line-height: 1.2;"><br>Vr. Proyección</div>
+<div style="color: white; font-weight: bold; font-size: 1.4rem; margin-top: 5px;">$ {tot_proy:,.0f}</div>
+</div>
+<div style="flex: 0.4; display: flex; align-items: center; justify-content: center; border-left: 4px solid white; margin-left: 15px; padding-left: 10px;">
+<span style="color: black; font-weight: 900; font-size: 1.3rem;">{idx_proy:,.0f}%</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; flex: 4.2; gap: 8px;">
+<div style="display: flex; gap: 8px; flex: 1;">
+<div style="flex: 1; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+<div>
+<div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Consumido</div>
+<div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {tot_cons:,.0f}</div>
+</div>
+<div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_cons:.0f}%</div>
+</div>
+<div style="flex: 1; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+<div>
+<div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Asegurado</div>
+<div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {tot_aseg:,.0f}</div>
+</div>
+<div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_aseg:.0f}%</div>
+</div>
+</div>
+<div style="display: flex; gap: 8px; flex: 1;">
+<div style="flex: 1.2; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+<div>
+<div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Por consumir</div>
+<div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {por_consumir:,.0f}</div>
+</div>
+<div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_por_consumir:.0f}%</div>
+</div>
+<div style="flex: 0.9; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center;">
+<div style="color: black; font-weight: 800; font-size: 0.9rem; text-align: center;">Imprevistos</div>
+<div style="color: #333; font-weight: bold; text-align: center; margin-top: 3px;">$ {val_imprevistos:,.0f}</div>
+</div>
+<div style="flex: 0.9; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center;">
+<div style="color: black; font-weight: 800; font-size: 0.9rem; text-align: center;">Reajustes</div>
+<div style="color: #333; font-weight: bold; text-align: center; margin-top: 3px;">$ {val_reajustes:,.0f}</div>
+</div>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; flex: 3; gap: 8px;">
+<div style="display: flex; gap: 8px; flex: 1;">
+<div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+<div style="font-weight: 800; color: black; font-size: 0.85rem;">% avance real</div>
+<div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_av_real}%</div>
+</div>
+<div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+<div style="font-weight: 800; color: black; font-size: 0.85rem;">Días de atraso</div>
+<div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_dias_atr}</div>
+</div>
+</div>
+<div style="display: flex; gap: 8px; flex: 1;">
+<div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+<div style="font-weight: 800; color: black; font-size: 0.85rem;">% avance programado</div>
+<div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_av_prog}%</div>
+</div>
+<div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+<div style="font-weight: 800; color: black; font-size: 0.85rem;">Meses faltantes</div>
+<div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{meses_falt:.1f}</div>
+</div>
+</div>
+</div>
+</div>"""
+
         banner_container.markdown(html_banner, unsafe_allow_html=True)
 
 
