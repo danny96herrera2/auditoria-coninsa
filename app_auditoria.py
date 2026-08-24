@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import re
-from datetime import datetime
+from datetime import datetime, date
 import altair as alt
 from streamlit_drawable_canvas import st_canvas
 import streamlit.components.v1 as components
@@ -38,13 +38,6 @@ st.markdown("""
     margin-top: 10px;
     font-weight: 600;
 }
-div[data-testid="metric-container"] {
-    background-color: #ffffff;
-    padding: 15px;
-    border-radius: 10px;
-    box-shadow: 0px 4px 10px rgba(0,0,0,0.05);
-    border-top: 5px solid #8CC63F;
-}
 .subtitulo {
     color: #002856;
     font-size: 1.6rem;
@@ -61,24 +54,17 @@ div[data-testid="metric-container"] {
     margin-top: 25px;
     margin-bottom: 10px;
 }
-
 /* REGLAS MÁGICAS PARA IMPRESIÓN (PDF) */
 @media print {
     section[data-testid="stSidebar"] { display: none !important; }
     header[data-testid="stHeader"] { display: none !important; }
     button { display: none !important; }
-    
     .stApp { background-color: white !important; }
     .header-corporativo { box-shadow: none !important; border: 2px solid #002856 !important; padding: 15px !important; }
-    div[data-testid="metric-container"] { box-shadow: none !important; border: 1px solid #ccc !important; }
-    
     .block-container { max-width: 100% !important; padding: 1rem !important; }
-    
     .stDataFrame, .stDataFrame > div { height: auto !important; max-height: none !important; overflow: visible !important; }
-    
     .stTabs [data-baseweb="tab-panel"] { display: block !important; visibility: visible !important; height: auto !important; }
     .stTabs [role="tablist"] { display: none !important; } 
-    
     .salto-impresion { page-break-before: always; }
 }
 </style>
@@ -123,7 +109,6 @@ def extraer_ajuste_causas(file_causas):
 
     meses_es = {'Enero': 1, 'Febrero': 2, 'Marzo': 3, 'Abril': 4, 'Mayo': 5, 'Junio': 6, 
                 'Julio': 7, 'Agosto': 8, 'Septiembre': 9, 'Octubre': 10, 'Noviembre': 11, 'Diciembre': 12}
-    
     date_cols = {}
     for col in df_c.columns:
         match = re.search(r'([A-Za-z]+)-(\d{2,4})', col)
@@ -132,12 +117,10 @@ def extraer_ajuste_causas(file_causas):
             year_str = match.group(2)
             if mes_str in meses_es:
                 year = int(year_str)
-                if year < 100:
-                    year += 2000
+                if year < 100: year += 2000
                 date_cols[col] = datetime(year, meses_es[mes_str], 1)
                 
-    if not date_cols:
-        return 0.0, "Sin fechas detectadas"
+    if not date_cols: return 0.0, "Sin fechas detectadas"
         
     hoy = datetime.now()
     most_recent_col = min(date_cols, key=lambda k: abs((date_cols[k] - hoy).days))
@@ -147,11 +130,8 @@ def extraer_ajuste_causas(file_causas):
     
     if not base_row.empty:
         val = base_row.iloc[-1][most_recent_col]
-        try:
-            return float(str(val).replace(',', '').replace('$', '').strip()), most_recent_col
-        except:
-            return 0.0, most_recent_col
-            
+        try: return float(str(val).replace(',', '').replace('$', '').strip()), most_recent_col
+        except: return 0.0, most_recent_col
     return 0.0, most_recent_col
 
 if uploaded_file is not None:
@@ -162,7 +142,7 @@ if uploaded_file is not None:
             try:
                 ajuste_ppto, info_col_causas = extraer_ajuste_causas(uploaded_causas)
             except Exception as e:
-                st.sidebar.warning(f"Error leyendo el archivo de Causas: {e}")
+                st.sidebar.warning(f"Error leyendo Causas: {e}")
 
         uploaded_file.seek(0)
         try:
@@ -205,15 +185,12 @@ if uploaded_file is not None:
             return None
 
         col_desc = encontrar_col(['DESCRIP']) or df.columns[0]
-        col_cod  = encontrar_col(['CÓDIGO']) or encontrar_col(['CODIGO']) or encontrar_col(['C\u00d3DIGO'])
-        
         c_pres_v = encontrar_col(['PRESUPUESTO', 'VALOR']) or encontrar_col(['PRESUP', 'VALOR'])
         c_proy_v = encontrar_col(['PROYECTADO', 'VALOR']) or encontrar_col(['PROY', 'VALOR'])
         c_aseg_v = encontrar_col(['ASEGURADO', 'VALOR']) or encontrar_col(['ASEG', 'VALOR'])
         c_cons_v = encontrar_col(['CONSUMIDO', 'VALOR']) or encontrar_col(['CONS', 'VALOR'])
-        c_comp_v = encontrar_col(['COMPRADO', 'VALOR']) or encontrar_col(['COMP', 'VALOR'])
 
-        cols_num = [c for c in [c_pres_v, c_proy_v, c_aseg_v, c_cons_v, c_comp_v] if c is not None]
+        cols_num = [c for c in [c_pres_v, c_proy_v, c_aseg_v, c_cons_v] if c is not None]
         for c in cols_num:
             df[c] = df[c].apply(limpiar_numero)
 
@@ -231,23 +208,168 @@ if uploaded_file is not None:
             tot_aseg = df[c_aseg_v].sum() if c_aseg_v else 0
             tot_cons = df[c_cons_v].sum() if c_cons_v else 0
 
+        # === APLICACIÓN DE AJUSTE Y CÁLCULOS ===
         tot_pres += ajuste_ppto
+        por_consumir = tot_proy - tot_cons
+        
+        pct_cons = (tot_cons / tot_proy * 100) if tot_proy > 0 else 0
+        pct_aseg = (tot_aseg / tot_proy * 100) if tot_proy > 0 else 0
+        pct_por_consumir = (por_consumir / tot_proy * 100) if tot_proy > 0 else 0
+        idx_proy = (tot_proy / tot_pres * 100) if tot_pres > 0 else 0
+
+        # === RASTREADOR DE IMPREVISTOS Y REAJUSTES ===
+        val_imprevistos = 0.0
+        val_reajustes = 0.0
+        
+        if c_proy_v:
+            for idx, row in df.iterrows():
+                desc_val = str(row[col_desc]).strip().upper()
+                if desc_val.startswith("39."):
+                    if "IMPREVISTOS DE OBRA" in desc_val:
+                        val_imprevistos = limpiar_numero(row[c_proy_v])
+                    elif "REAJUSTE DE OBRA" in desc_val or "REAJUSTES DE OBRA" in desc_val:
+                        val_reajustes = limpiar_numero(row[c_proy_v])
+
+        # ESPACIO RESERVADO PARA EL BANNER
+        banner_container = st.empty()
 
         # ==========================================
-        # RESERVAR ESPACIO EN LA PARTE SUPERIOR PARA LOS KPIs
+        # INTERFAZ DE PESTAÑAS (3 HOJAS)
         # ==========================================
-        # Creamos un contenedor vacío aquí para llenarlo DESPUÉS de capturar los datos de la pestaña 3
-        banner_kpis = st.container()
+        tab_capitulos, tab_items, tab_prog = st.tabs(["📑 Hoja 1: Resumen de Capítulos", "🗂️ Hoja 2: Detalle por Ítems", "🗓️ Hoja 3: Programación"])
+
+        with tab_prog:
+            st.markdown('<div class="subtitulo">🗓️ % Programa Vs % Consumido</div>', unsafe_allow_html=True)
+            st.info("Digita las fechas y los porcentajes. El sistema calculará los meses automáticamente y los enviará al banner superior.")
+            
+            # Fila 1: Fechas (Inputs)
+            c1, c2, c3 = st.columns(3)
+            val_f_inicio = c1.date_input("Fecha inicio", value=None)
+            val_f_fin = c2.date_input("Fecha fin", value=None)
+            val_f_auditoria = c3.date_input("Fecha de auditoría", value=datetime.today())
+
+            # Cálculos automáticos de tiempos
+            meses_tot = 0.0
+            meses_ejec = 0.0
+            meses_falt = 0.0
+            
+            if val_f_inicio and val_f_fin:
+                meses_tot = (val_f_fin - val_f_inicio).days / 30.0
+            if val_f_inicio and val_f_auditoria:
+                meses_ejec = (val_f_auditoria - val_f_inicio).days / 30.0
+                
+            meses_falt = meses_tot - meses_ejec
+
+            st.markdown(f"""
+            <div style="background-color: #E2EFD9; padding: 15px; border-radius: 5px; text-align: center; color: black; font-weight: bold; margin-bottom: 20px;">
+                Meses de ejecución total: <span style="color: #257A72; font-size: 1.2rem;">{meses_tot:.1f}</span> &nbsp; | &nbsp; 
+                Meses ejecutados: <span style="color: #257A72; font-size: 1.2rem;">{meses_ejec:.1f}</span> &nbsp; | &nbsp; 
+                Meses por ejecutar: <span style="color: #257A72; font-size: 1.2rem;">{meses_falt:.1f}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Fila 2: Porcentajes y Atraso (Inputs)
+            c4, c5, c6 = st.columns(3)
+            val_av_real = c4.number_input("% avance real", value=0.0, step=0.1, format="%.1f")
+            val_av_prog = c5.number_input("% avance programado", value=0.0, step=0.1, format="%.1f")
+            val_dias_atr = c6.number_input("Días de atraso", value=0, step=1)
 
         # ==========================================
-        # FILTRO INTELIGENTE Y PREPARACIÓN DE DATOS
+        # CONSTRUCCIÓN DEL BANNER HTML (SE INYECTA ARRIBA)
+        # ==========================================
+        html_banner = f"""
+        <div style="display: flex; width: 100%; gap: 15px; font-family: sans-serif; margin-bottom: 25px;">
+            
+            <!-- BLOQUE 1: VERDE OLIVO -->
+            <div style="display: flex; flex: 2.8; background-color: #9DBB61; padding: 15px; border-radius: 8px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1);">
+                <div style="flex: 1; text-align: center; border-right: 1px solid rgba(255,255,255,0.4); padding-right: 5px; display: flex; flex-direction: column; justify-content: center;">
+                    <div style="color: black; font-weight: 800; font-size: 1rem; line-height: 1.2;">Vr. PPTO<br>+Adicionales</div>
+                    <div style="color: white; font-weight: bold; font-size: 1.4rem; margin-top: 5px;">$ {tot_pres:,.0f}</div>
+                </div>
+                <div style="flex: 1; text-align: center; padding-left: 5px; display: flex; flex-direction: column; justify-content: center;">
+                    <div style="color: black; font-weight: 800; font-size: 1rem; line-height: 1.2;"><br>Vr. Proyección</div>
+                    <div style="color: white; font-weight: bold; font-size: 1.4rem; margin-top: 5px;">$ {tot_proy:,.0f}</div>
+                </div>
+                <div style="flex: 0.4; display: flex; align-items: center; justify-content: center; border-left: 4px solid white; margin-left: 15px; padding-left: 10px;">
+                    <span style="color: black; font-weight: 900; font-size: 1.3rem;">{idx_proy:,.0f}%</span>
+                </div>
+            </div>
+            
+            <!-- BLOQUE 2: BEIGE / VERDE CLARO -->
+            <div style="display: flex; flex-direction: column; flex: 4.2; gap: 8px;">
+                <div style="display: flex; gap: 8px; flex: 1;">
+                    <div style="flex: 1; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Consumido</div>
+                            <div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {tot_cons:,.0f}</div>
+                        </div>
+                        <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_cons:.0f}%</div>
+                    </div>
+                    <div style="flex: 1; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Asegurado</div>
+                            <div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {tot_aseg:,.0f}</div>
+                        </div>
+                        <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_aseg:.0f}%</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; flex: 1;">
+                    <div style="flex: 1.2; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Por consumir</div>
+                            <div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {por_consumir:,.0f}</div>
+                        </div>
+                        <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_por_consumir:.0f}%</div>
+                    </div>
+                    <div style="flex: 0.9; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center;">
+                        <div style="color: black; font-weight: 800; font-size: 0.9rem; text-align: center;">Imprevistos</div>
+                        <div style="color: #333; font-weight: bold; text-align: center; margin-top: 3px;">$ {val_imprevistos:,.0f}</div>
+                    </div>
+                    <div style="flex: 0.9; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center;">
+                        <div style="color: black; font-weight: 800; font-size: 0.9rem; text-align: center;">Reajustes</div>
+                        <div style="color: #333; font-weight: bold; text-align: center; margin-top: 3px;">$ {val_reajustes:,.0f}</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- BLOQUE 3: VERDE OSCURO (TEAL) -->
+            <div style="display: flex; flex-direction: column; flex: 3; gap: 8px;">
+                <div style="display: flex; gap: 8px; flex: 1;">
+                    <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+                        <div style="font-weight: 800; color: black; font-size: 0.85rem;">% avance real</div>
+                        <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_av_real}%</div>
+                    </div>
+                    <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+                        <div style="font-weight: 800; color: black; font-size: 0.85rem;">Días de atraso</div>
+                        <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_dias_atr}</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; flex: 1;">
+                    <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+                        <div style="font-weight: 800; color: black; font-size: 0.85rem;">% avance programado</div>
+                        <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_av_prog}%</div>
+                    </div>
+                    <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+                        <div style="font-weight: 800; color: black; font-size: 0.85rem;">Meses faltantes</div>
+                        <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{meses_falt:.1f}</div>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+        """
+        # Inyectar el banner en el espacio reservado arriba
+        banner_container.markdown(html_banner, unsafe_allow_html=True)
+
+
+        # ==========================================
+        # FUNCIONES DE TABLAS Y GRÁFICAS (HOJA 1 Y 2)
         # ==========================================
         patron_capitulos = r'^\s*\d{1,2}\s*[-]'
         es_capitulo = df[col_desc].astype(str).str.contains(patron_capitulos, regex=True, na=False)
         es_total = df[col_desc].astype(str).str.upper().str.contains("TOTAL", na=False)
         
         df_capitulos = df[es_capitulo & ~es_total].copy()
-        
         if df_capitulos.empty:
             patron_capitulos_flexible = r'^\s*\d{1,2}\s+[A-Za-z]'
             es_capitulo = df[col_desc].astype(str).str.contains(patron_capitulos_flexible, regex=True, na=False)
@@ -286,73 +408,8 @@ if uploaded_file is not None:
                 df_t2.columns = ['Descripción', 'Proyectado', 'Asegurado', 'Diferencia (%)', 'Observaciones']
                 st.data_editor(df_t2, column_config={"Proyectado": st.column_config.NumberColumn(format="$ %,.0f"), "Asegurado": st.column_config.NumberColumn(format="$ %,.0f"), "Diferencia (%)": st.column_config.NumberColumn(format="%.1f %%"), "Observaciones": st.column_config.TextColumn()}, use_container_width=True, hide_index=True, height=altura_dinamica, key=f"{key_prefix}_2")
 
-        # ==========================================
-        # INTERFAZ DE PESTAÑAS (3 HOJAS)
-        # ==========================================
-        tab_capitulos, tab_items, tab_prog = st.tabs(["📑 Hoja 1: Resumen de Capítulos", "🗂️ Hoja 2: Detalle por Ítems", "🗓️ Hoja 3: Programación"])
-
-        # ---> HOJA 3: PROGRAMACIÓN (Debe ir primero en código para capturar variables)
-        with tab_prog:
-            st.markdown('<div class="subtitulo">🗓️ % Programa Vs % Consumido</div>', unsafe_allow_html=True)
-            st.info("Digita la información del cronograma de obra. Estos datos se reflejarán automáticamente en el panel superior principal.")
-            
-            # Fila 1 de inputs
-            c1, c2, c3, c4 = st.columns(4)
-            val_f_inicio = c1.date_input("Fecha inicio", value=None)
-            val_f_fin = c2.date_input("Fecha fin", value=None)
-            val_meses_tot = c3.number_input("Meses de ejecución total", value=0.0, step=0.1, format="%.1f")
-            val_meses_ejec = c4.number_input("Meses ejecutados", value=0.0, step=0.1, format="%.1f")
-
-            # Fila 2 de inputs
-            c5, c6, c7, c8 = st.columns(4)
-            val_av_real = c5.number_input("% avance real", value=0.0, step=0.1, format="%.1f")
-            val_av_prog = c6.number_input("% avance programado", value=0.0, step=0.1, format="%.1f")
-            val_dias_atr = c7.number_input("Días de atraso", value=0, step=1)
-            val_meses_falt = c8.number_input("Meses por ejecutar", value=0.0, step=0.1, format="%.1f")
-
-        # ==========================================
-        # DIBUJAR AHORA LOS KPIs EN EL BANNER SUPERIOR
-        # ==========================================
-        with banner_kpis:
-            col_financiera, col_programacion = st.columns([7, 3]) # 70% Finanzas, 30% Programación
-            
-            with col_financiera:
-                st.markdown('<div class="titulo-tabla" style="margin-top:0;">💰 Desempeño Financiero</div>', unsafe_allow_html=True)
-                kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
-                
-                if ajuste_ppto != 0:
-                    match_mes = re.search(r'([A-Za-z]+-\d{2,4})', info_col_causas)
-                    mes_label = match_mes.group(1).capitalize() if match_mes else "Causas"
-                    kpi1.metric("Ppto + Reajuste (Miles)", f"${(tot_pres/1000):,.0f}", f"+ ${(ajuste_ppto/1000):,.0f} ({mes_label})", delta_color="off")
-                else:
-                    kpi1.metric("Presupuesto (Miles)", f"${(tot_pres/1000):,.0f}")
-                    
-                pct_dif_proy = ((tot_proy - tot_pres) / tot_pres * 100) if tot_pres > 0 else 0
-                delta_proy_str = f"${((tot_proy - tot_pres)/1000):,.0f} ({pct_dif_proy:+.1f}%) vs Pres"
-                kpi2.metric("Proyectado (Miles)", f"${(tot_proy/1000):,.0f}", delta_proy_str, delta_color="inverse")
-                
-                idx_proy = (tot_proy / tot_pres * 100) if tot_pres > 0 else 0
-                dif_idx = idx_proy - 100
-                kpi3.metric("Índice Proy/Ppto", f"{idx_proy:,.1f}%", f"{dif_idx:+.1f}% de Desviación", delta_color="inverse")
-                
-                kpi4.metric("Asegurado (Miles)", f"${(tot_aseg/1000):,.0f}")
-                kpi5.metric("Consumido (Miles)", f"${(tot_cons/1000):,.0f}", f"${((tot_cons - tot_aseg)/1000):,.0f} vs Aseg", delta_color="inverse")
-
-            with col_programacion:
-                st.markdown('<div class="titulo-tabla" style="margin-top:0; color:#148F77;">⏱️ Programación</div>', unsafe_allow_html=True)
-                # Replicando el panel 2x2 de la imagen
-                p_r1_1, p_r1_2 = st.columns(2)
-                p_r1_1.metric("% avance real", f"{val_av_real}%")
-                p_r1_2.metric("Días de atraso", f"{val_dias_atr}")
-                
-                p_r2_1, p_r2_2 = st.columns(2)
-                p_r2_1.metric("% avance prog.", f"{val_av_prog}%")
-                p_r2_2.metric("Meses faltantes", f"{val_meses_falt}")
-
-        # ---> HOJA 1: CAPÍTULOS
         with tab_capitulos:
             st.markdown('<div class="subtitulo">📊 COMPARATIVA GERENCIAL (Capítulos)</div>', unsafe_allow_html=True)
-            
             todos_los_capitulos = df_capitulos[col_desc].dropna().unique().tolist() if not df_capitulos.empty else []
             modo_filtro = st.radio("Configuración de Visualización:", ["Mostrar Todos los Capítulos", "Seleccionar Manualmente"], horizontal=True)
             
@@ -361,7 +418,6 @@ if uploaded_file is not None:
             else:
                 capitulos_seleccionados = st.multiselect("🔍 Selecciona los Capítulos que deseas analizar:", options=todos_los_capitulos, default=[])
 
-            # GRÁFICA 1: VALORES EN MILES
             cols_grafica = []
             nombres_grafica = []
             if c_pres_v: cols_grafica.append(c_pres_v); nombres_grafica.append("Presupuestado")
@@ -387,10 +443,8 @@ if uploaded_file is not None:
                 )
                 st.altair_chart(chart_fin, use_container_width=True)
 
-            # GRÁFICA 2: ÍNDICE DE EJECUCIÓN (%)
             cols_porcentajes = []
             nombres_pct = []
-            
             if c_proy_v and c_aseg_v:
                 df_capitulos['% Aseg vs Proy'] = np.where(df_capitulos[c_proy_v] > 0, df_capitulos[c_aseg_v] / df_capitulos[c_proy_v], 0.0)
                 cols_porcentajes.append('% Aseg vs Proy')
@@ -423,7 +477,6 @@ if uploaded_file is not None:
                 text_pct = base_pct.mark_text(align='center', baseline='middle', color='white', fontWeight='bold', fontSize=11).encode(
                     y=alt.Y('Posicion_Texto:Q'), text=alt.Text('Porcentaje:Q', format=".1%")
                 )
-                
                 chart_pct = (bar_pct + text_pct).configure_view(strokeWidth=0)
                 st.altair_chart(chart_pct, use_container_width=True)
                 
@@ -433,7 +486,6 @@ if uploaded_file is not None:
             st.markdown('<div class="subtitulo">📋 TABLAS DE CONTROL - Nivel Capítulo</div>', unsafe_allow_html=True)
             generar_tablas(df_capitulos, "capitulos")
 
-        # ---> HOJA 2: ÍTEMS
         with tab_items:
             st.markdown('<div class="subtitulo">🔍 DESGLOSE DETALLADO - Nivel Ítem</div>', unsafe_allow_html=True)
             if df_items.empty:
