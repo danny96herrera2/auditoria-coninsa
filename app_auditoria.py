@@ -40,7 +40,7 @@ st.markdown("""
 }
 div[data-testid="metric-container"] {
     background-color: #ffffff;
-    padding: 20px;
+    padding: 15px;
     border-radius: 10px;
     box-shadow: 0px 4px 10px rgba(0,0,0,0.05);
     border-top: 5px solid #8CC63F;
@@ -231,33 +231,16 @@ if uploaded_file is not None:
             tot_aseg = df[c_aseg_v].sum() if c_aseg_v else 0
             tot_cons = df[c_cons_v].sum() if c_cons_v else 0
 
-        # === APLICACIÓN DE AJUSTE AL TOTAL PRESUPUESTO ===
         tot_pres += ajuste_ppto
 
         # ==========================================
-        # TARJETAS DE MÉTRICAS (5 Columnas)
+        # RESERVAR ESPACIO EN LA PARTE SUPERIOR PARA LOS KPIs
         # ==========================================
-        kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
-        
-        if ajuste_ppto != 0:
-            match_mes = re.search(r'([A-Za-z]+-\d{2,4})', info_col_causas)
-            mes_label = match_mes.group(1).capitalize() if match_mes else "Causas"
-            kpi1.metric("Ppto + Reajuste (Miles)", f"${(tot_pres/1000):,.0f}", f"+ ${(ajuste_ppto/1000):,.0f} ({mes_label})", delta_color="off")
-        else:
-            kpi1.metric("Presupuesto (Miles)", f"${(tot_pres/1000):,.0f}")
-            
-        kpi2.metric("Proyectado (Miles)", f"${(tot_proy/1000):,.0f}", f"${((tot_proy - tot_pres)/1000):,.0f} vs Pres", delta_color="inverse")
-        
-        # --- NUEVA TARJETA INDEPENDIENTE Y GRANDE PARA EL ÍNDICE ---
-        idx_proy = (tot_proy / tot_pres * 100) if tot_pres > 0 else 0
-        dif_idx = idx_proy - 100
-        kpi3.metric("Índice Proy/Ppto", f"{idx_proy:,.1f}%", f"{dif_idx:+.1f}% de Desviación", delta_color="inverse")
-        
-        kpi4.metric("Asegurado (Miles)", f"${(tot_aseg/1000):,.0f}")
-        kpi5.metric("Consumido (Miles)", f"${(tot_cons/1000):,.0f}", f"${((tot_cons - tot_aseg)/1000):,.0f} vs Aseg", delta_color="inverse")
-        
+        # Creamos un contenedor vacío aquí para llenarlo DESPUÉS de capturar los datos de la pestaña 3
+        banner_kpis = st.container()
+
         # ==========================================
-        # FILTRO INTELIGENTE: CAPÍTULOS VS ÍTEMS
+        # FILTRO INTELIGENTE Y PREPARACIÓN DE DATOS
         # ==========================================
         patron_capitulos = r'^\s*\d{1,2}\s*[-]'
         es_capitulo = df[col_desc].astype(str).str.contains(patron_capitulos, regex=True, na=False)
@@ -278,9 +261,6 @@ if uploaded_file is not None:
             if not df_capitulos.empty: df_capitulos[c] = df_capitulos[c] / 1000.0
             if not df_items.empty: df_items[c] = df_items[c] / 1000.0
 
-        # ==========================================
-        # FUNCIÓN PARA CREAR TABLAS
-        # ==========================================
         def generar_tablas(df_datos, key_prefix):
             if c_pres_v and c_proy_v:
                 df_datos['VAR_PPTO_%'] = np.where(df_datos[c_pres_v] > 0, ((df_datos[c_proy_v] - df_datos[c_pres_v]) / df_datos[c_pres_v]) * 100, 0.0)
@@ -297,53 +277,89 @@ if uploaded_file is not None:
             df_t1 = df_datos[[col_desc, c_pres_v, c_proy_v, 'VAR_PPTO_%', 'Observaciones']].copy() if c_pres_v and c_proy_v else pd.DataFrame()
             if not df_t1.empty:
                 df_t1.columns = ['Descripción', 'Presupuestado', 'Proyectado', 'Diferencia (%)', 'Observaciones']
-                st.data_editor(
-                    df_t1, 
-                    column_config={
-                        "Presupuestado": st.column_config.NumberColumn(format="$ %,.0f"),
-                        "Proyectado": st.column_config.NumberColumn(format="$ %,.0f"),
-                        "Diferencia (%)": st.column_config.NumberColumn(format="%.1f %%"),
-                        "Observaciones": st.column_config.TextColumn(help="Doble clic para escribir")
-                    }, 
-                    use_container_width=True, hide_index=True, height=altura_dinamica, key=f"{key_prefix}_1"
-                )
+                st.data_editor(df_t1, column_config={"Presupuestado": st.column_config.NumberColumn(format="$ %,.0f"), "Proyectado": st.column_config.NumberColumn(format="$ %,.0f"), "Diferencia (%)": st.column_config.NumberColumn(format="%.1f %%"), "Observaciones": st.column_config.TextColumn()}, use_container_width=True, hide_index=True, height=altura_dinamica, key=f"{key_prefix}_1")
 
             st.markdown('<br>', unsafe_allow_html=True) 
             st.markdown('<div class="titulo-tabla">2. ASEGURADO VS PROYECTADO</div>', unsafe_allow_html=True)
             df_t2 = df_datos[[col_desc, c_proy_v, c_aseg_v, 'VAR_ASEG_%', 'Observaciones']].copy() if c_proy_v and c_aseg_v else pd.DataFrame()
             if not df_t2.empty:
                 df_t2.columns = ['Descripción', 'Proyectado', 'Asegurado', 'Diferencia (%)', 'Observaciones']
-                st.data_editor(
-                    df_t2, 
-                    column_config={
-                        "Proyectado": st.column_config.NumberColumn(format="$ %,.0f"),
-                        "Asegurado": st.column_config.NumberColumn(format="$ %,.0f"),
-                        "Diferencia (%)": st.column_config.NumberColumn(format="%.1f %%"),
-                        "Observaciones": st.column_config.TextColumn(help="Doble clic para escribir")
-                    }, 
-                    use_container_width=True, hide_index=True, height=altura_dinamica, key=f"{key_prefix}_2"
-                )
+                st.data_editor(df_t2, column_config={"Proyectado": st.column_config.NumberColumn(format="$ %,.0f"), "Asegurado": st.column_config.NumberColumn(format="$ %,.0f"), "Diferencia (%)": st.column_config.NumberColumn(format="%.1f %%"), "Observaciones": st.column_config.TextColumn()}, use_container_width=True, hide_index=True, height=altura_dinamica, key=f"{key_prefix}_2")
 
         # ==========================================
-        # INTERFAZ DE PESTAÑAS (HOJAS)
+        # INTERFAZ DE PESTAÑAS (3 HOJAS)
         # ==========================================
-        tab_capitulos, tab_items = st.tabs(["📑 Hoja 1: Resumen de Capítulos", "🗂️ Hoja 2: Detalle por Ítems"])
+        tab_capitulos, tab_items, tab_prog = st.tabs(["📑 Hoja 1: Resumen de Capítulos", "🗂️ Hoja 2: Detalle por Ítems", "🗓️ Hoja 3: Programación"])
 
+        # ---> HOJA 3: PROGRAMACIÓN (Debe ir primero en código para capturar variables)
+        with tab_prog:
+            st.markdown('<div class="subtitulo">🗓️ % Programa Vs % Consumido</div>', unsafe_allow_html=True)
+            st.info("Digita la información del cronograma de obra. Estos datos se reflejarán automáticamente en el panel superior principal.")
+            
+            # Fila 1 de inputs
+            c1, c2, c3, c4 = st.columns(4)
+            val_f_inicio = c1.date_input("Fecha inicio", value=None)
+            val_f_fin = c2.date_input("Fecha fin", value=None)
+            val_meses_tot = c3.number_input("Meses de ejecución total", value=0.0, step=0.1, format="%.1f")
+            val_meses_ejec = c4.number_input("Meses ejecutados", value=0.0, step=0.1, format="%.1f")
+
+            # Fila 2 de inputs
+            c5, c6, c7, c8 = st.columns(4)
+            val_av_real = c5.number_input("% avance real", value=0.0, step=0.1, format="%.1f")
+            val_av_prog = c6.number_input("% avance programado", value=0.0, step=0.1, format="%.1f")
+            val_dias_atr = c7.number_input("Días de atraso", value=0, step=1)
+            val_meses_falt = c8.number_input("Meses por ejecutar", value=0.0, step=0.1, format="%.1f")
+
+        # ==========================================
+        # DIBUJAR AHORA LOS KPIs EN EL BANNER SUPERIOR
+        # ==========================================
+        with banner_kpis:
+            col_financiera, col_programacion = st.columns([7, 3]) # 70% Finanzas, 30% Programación
+            
+            with col_financiera:
+                st.markdown('<div class="titulo-tabla" style="margin-top:0;">💰 Desempeño Financiero</div>', unsafe_allow_html=True)
+                kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+                
+                if ajuste_ppto != 0:
+                    match_mes = re.search(r'([A-Za-z]+-\d{2,4})', info_col_causas)
+                    mes_label = match_mes.group(1).capitalize() if match_mes else "Causas"
+                    kpi1.metric("Ppto + Reajuste (Miles)", f"${(tot_pres/1000):,.0f}", f"+ ${(ajuste_ppto/1000):,.0f} ({mes_label})", delta_color="off")
+                else:
+                    kpi1.metric("Presupuesto (Miles)", f"${(tot_pres/1000):,.0f}")
+                    
+                pct_dif_proy = ((tot_proy - tot_pres) / tot_pres * 100) if tot_pres > 0 else 0
+                delta_proy_str = f"${((tot_proy - tot_pres)/1000):,.0f} ({pct_dif_proy:+.1f}%) vs Pres"
+                kpi2.metric("Proyectado (Miles)", f"${(tot_proy/1000):,.0f}", delta_proy_str, delta_color="inverse")
+                
+                idx_proy = (tot_proy / tot_pres * 100) if tot_pres > 0 else 0
+                dif_idx = idx_proy - 100
+                kpi3.metric("Índice Proy/Ppto", f"{idx_proy:,.1f}%", f"{dif_idx:+.1f}% de Desviación", delta_color="inverse")
+                
+                kpi4.metric("Asegurado (Miles)", f"${(tot_aseg/1000):,.0f}")
+                kpi5.metric("Consumido (Miles)", f"${(tot_cons/1000):,.0f}", f"${((tot_cons - tot_aseg)/1000):,.0f} vs Aseg", delta_color="inverse")
+
+            with col_programacion:
+                st.markdown('<div class="titulo-tabla" style="margin-top:0; color:#148F77;">⏱️ Programación</div>', unsafe_allow_html=True)
+                # Replicando el panel 2x2 de la imagen
+                p_r1_1, p_r1_2 = st.columns(2)
+                p_r1_1.metric("% avance real", f"{val_av_real}%")
+                p_r1_2.metric("Días de atraso", f"{val_dias_atr}")
+                
+                p_r2_1, p_r2_2 = st.columns(2)
+                p_r2_1.metric("% avance prog.", f"{val_av_prog}%")
+                p_r2_2.metric("Meses faltantes", f"{val_meses_falt}")
+
+        # ---> HOJA 1: CAPÍTULOS
         with tab_capitulos:
             st.markdown('<div class="subtitulo">📊 COMPARATIVA GERENCIAL (Capítulos)</div>', unsafe_allow_html=True)
             
             todos_los_capitulos = df_capitulos[col_desc].dropna().unique().tolist() if not df_capitulos.empty else []
-            
             modo_filtro = st.radio("Configuración de Visualización:", ["Mostrar Todos los Capítulos", "Seleccionar Manualmente"], horizontal=True)
             
             if modo_filtro == "Mostrar Todos los Capítulos":
                 capitulos_seleccionados = todos_los_capitulos
             else:
-                capitulos_seleccionados = st.multiselect(
-                    "🔍 Selecciona los Capítulos que deseas analizar:", 
-                    options=todos_los_capitulos, 
-                    default=[]  
-                )
+                capitulos_seleccionados = st.multiselect("🔍 Selecciona los Capítulos que deseas analizar:", options=todos_los_capitulos, default=[])
 
             # GRÁFICA 1: VALORES EN MILES
             cols_grafica = []
@@ -358,7 +374,6 @@ if uploaded_file is not None:
                 df_grafica.index.name = "Capítulo" 
                 
                 df_grafica_filtrada = df_grafica[df_grafica.index.isin(capitulos_seleccionados)].reset_index()
-                
                 df_fin_melt = df_grafica_filtrada.melt(id_vars="Capítulo", var_name="Métrica", value_name="Valor")
                 colores_coninsa = ["#002856", "#8CC63F", "#FFC112"][:len(cols_grafica)]
                 
@@ -393,33 +408,20 @@ if uploaded_file is not None:
                 
                 df_grafica_pct_filtrada = df_grafica_pct[df_grafica_pct.index.isin(capitulos_seleccionados)].reset_index()
                 df_pct_melt = df_grafica_pct_filtrada.melt(id_vars="Capítulo", var_name="Métrica", value_name="Porcentaje")
-                
                 df_pct_melt['Posicion_Texto'] = df_pct_melt['Porcentaje'] / 2
                 
                 colores_pct = ["#E74C3C", "#3498DB"][:len(cols_porcentajes)]
                 
                 st.markdown("**Índices de Ejecución (%)**")
-                
                 base_pct = alt.Chart(df_pct_melt).encode(
                     x=alt.X('Capítulo:N', title="", axis=alt.Axis(labelAngle=-45)),
                     xOffset='Métrica:N', 
                     color=alt.Color('Métrica:N', scale=alt.Scale(domain=nombres_pct, range=colores_pct), legend=alt.Legend(title="Indicador", orient="top")),
                     tooltip=['Capítulo', 'Métrica', alt.Tooltip('Porcentaje:Q', format=".1%")]
                 )
-                
-                bar_pct = base_pct.mark_bar().encode(
-                    y=alt.Y('Porcentaje:Q', title="Porcentaje (%)", axis=alt.Axis(format=".0%"))
-                )
-                
-                text_pct = base_pct.mark_text(
-                    align='center',
-                    baseline='middle',
-                    color='white',
-                    fontWeight='bold',
-                    fontSize=11
-                ).encode(
-                    y=alt.Y('Posicion_Texto:Q'), 
-                    text=alt.Text('Porcentaje:Q', format=".1%")
+                bar_pct = base_pct.mark_bar().encode(y=alt.Y('Porcentaje:Q', title="Porcentaje (%)", axis=alt.Axis(format=".0%")))
+                text_pct = base_pct.mark_text(align='center', baseline='middle', color='white', fontWeight='bold', fontSize=11).encode(
+                    y=alt.Y('Posicion_Texto:Q'), text=alt.Text('Porcentaje:Q', format=".1%")
                 )
                 
                 chart_pct = (bar_pct + text_pct).configure_view(strokeWidth=0)
@@ -431,6 +433,7 @@ if uploaded_file is not None:
             st.markdown('<div class="subtitulo">📋 TABLAS DE CONTROL - Nivel Capítulo</div>', unsafe_allow_html=True)
             generar_tablas(df_capitulos, "capitulos")
 
+        # ---> HOJA 2: ÍTEMS
         with tab_items:
             st.markdown('<div class="subtitulo">🔍 DESGLOSE DETALLADO - Nivel Ítem</div>', unsafe_allow_html=True)
             if df_items.empty:
@@ -451,10 +454,7 @@ if uploaded_file is not None:
         with col_der:
             nombre_auditor = st.text_input("👤 Nombre del Auditor Responsable:")
             st.write("**Firma:**")
-            st_canvas(
-                fill_color="rgba(140, 198, 63, 0.3)", stroke_width=2, stroke_color="#002856",
-                background_color="#ffffff", height=150, width=300, drawing_mode="freedraw", key="canvas"
-            )
+            st_canvas(fill_color="rgba(140, 198, 63, 0.3)", stroke_width=2, stroke_color="#002856", background_color="#ffffff", height=150, width=300, drawing_mode="freedraw", key="canvas")
             
         col_bot1, col_bot2 = st.columns([1, 1])
         with col_bot1:
@@ -484,8 +484,7 @@ if uploaded_file is not None:
                     font-family:sans-serif;
                     width: 100%;
                 ">🖨️ Imprimir Reporte (o presiona Ctrl+P)</button>
-                """,
-                height=55
+                """, height=55
             )
 
     except Exception as e:
