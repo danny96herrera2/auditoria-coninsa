@@ -272,17 +272,17 @@ if uploaded_file is not None:
             val_dias_atr = c6.number_input("Días de atraso", value=0, step=1)
 
         # ==========================================
-        # CONSTRUCCIÓN DEL BANNER HTML (Corregido sin espacios al inicio)
+        # CONSTRUCCIÓN DEL BANNER HTML (Corregido dividiendo entre 1000)
         # ==========================================
         html_banner = f"""<div style="display: flex; width: 100%; gap: 15px; font-family: sans-serif; margin-bottom: 25px;">
 <div style="display: flex; flex: 2.8; background-color: #9DBB61; padding: 15px; border-radius: 8px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1);">
 <div style="flex: 1; text-align: center; border-right: 1px solid rgba(255,255,255,0.4); padding-right: 5px; display: flex; flex-direction: column; justify-content: center;">
 <div style="color: black; font-weight: 800; font-size: 1rem; line-height: 1.2;">Vr. PPTO<br>+Adicionales</div>
-<div style="color: white; font-weight: bold; font-size: 1.4rem; margin-top: 5px;">$ {tot_pres:,.0f}</div>
+<div style="color: white; font-weight: bold; font-size: 1.4rem; margin-top: 5px;">$ {(tot_pres/1000):,.0f}</div>
 </div>
 <div style="flex: 1; text-align: center; padding-left: 5px; display: flex; flex-direction: column; justify-content: center;">
 <div style="color: black; font-weight: 800; font-size: 1rem; line-height: 1.2;"><br>Vr. Proyección</div>
-<div style="color: white; font-weight: bold; font-size: 1.4rem; margin-top: 5px;">$ {tot_proy:,.0f}</div>
+<div style="color: white; font-weight: bold; font-size: 1.4rem; margin-top: 5px;">$ {(tot_proy/1000):,.0f}</div>
 </div>
 <div style="flex: 0.4; display: flex; align-items: center; justify-content: center; border-left: 4px solid white; margin-left: 15px; padding-left: 10px;">
 <span style="color: black; font-weight: 900; font-size: 1.3rem;">{idx_proy:,.0f}%</span>
@@ -293,14 +293,14 @@ if uploaded_file is not None:
 <div style="flex: 1; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
 <div>
 <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Consumido</div>
-<div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {tot_cons:,.0f}</div>
+<div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {(tot_cons/1000):,.0f}</div>
 </div>
 <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_cons:.0f}%</div>
 </div>
 <div style="flex: 1; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
 <div>
 <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Asegurado</div>
-<div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {tot_aseg:,.0f}</div>
+<div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {(tot_aseg/1000):,.0f}</div>
 </div>
 <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_aseg:.0f}%</div>
 </div>
@@ -309,17 +309,17 @@ if uploaded_file is not None:
 <div style="flex: 1.2; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
 <div>
 <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Por consumir</div>
-<div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {por_consumir:,.0f}</div>
+<div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {(por_consumir/1000):,.0f}</div>
 </div>
 <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_por_consumir:.0f}%</div>
 </div>
 <div style="flex: 0.9; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center;">
 <div style="color: black; font-weight: 800; font-size: 0.9rem; text-align: center;">Imprevistos</div>
-<div style="color: #333; font-weight: bold; text-align: center; margin-top: 3px;">$ {val_imprevistos:,.0f}</div>
+<div style="color: #333; font-weight: bold; text-align: center; margin-top: 3px;">$ {(val_imprevistos/1000):,.0f}</div>
 </div>
 <div style="flex: 0.9; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center;">
 <div style="color: black; font-weight: 800; font-size: 0.9rem; text-align: center;">Reajustes</div>
-<div style="color: #333; font-weight: bold; text-align: center; margin-top: 3px;">$ {val_reajustes:,.0f}</div>
+<div style="color: #333; font-weight: bold; text-align: center; margin-top: 3px;">$ {(val_reajustes/1000):,.0f}</div>
 </div>
 </div>
 </div>
