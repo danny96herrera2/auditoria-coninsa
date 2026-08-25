@@ -11,21 +11,18 @@ import plotly.express as px
 import textwrap
 import gc  
 
-# --- LIBRERÍAS DE IA Y GITHUB ---
-from sklearn.linear_model import Ridge
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.pipeline import make_pipeline
+# --- LIBRERÍAS GITHUB ---
 from github import Github
-import google.generativeai as genai
 
-pd.set_option("styler.render.max_elements", 100000) 
+# Reducimos drásticamente los elementos visuales precargados para ahorrar RAM
+pd.set_option("styler.render.max_elements", 10000) 
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.LITERA], suppress_callback_exceptions=True)
 app.title = "Dashboard Coninsa PRO"
 server = app.server
 
 # =====================================================================
-# 🖨️ CONFIGURACIÓN DE PLANTILLA HTML PARA EXPORTAR A PDF LIMPIO
+# 🖨️ CONFIGURACIÓN DE PLANTILLA HTML
 # =====================================================================
 app.index_string = '''
 <!DOCTYPE html>
@@ -56,7 +53,7 @@ app.index_string = '''
 '''
 
 # =====================================================================
-# 🔐 CONFIGURACIÓN DE APIS Y GITHUB
+# 🔐 CONFIGURACIÓN DE APIS Y GITHUB (Usando Variables de Entorno)
 # =====================================================================
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = "danny96herrera2/dashboard-coninsa"
@@ -97,6 +94,16 @@ def leer_csv_robusto(ruta):
         except UnicodeDecodeError: continue
     return pd.DataFrame()
 
+# OPTIMIZACIÓN: Reducción extrema de tipos de datos para RAM
+def optimizar_memoria(df):
+    if df.empty: return df
+    for col in df.select_dtypes(include=['float64']).columns:
+        df[col] = pd.to_numeric(df[col], downcast='float')
+    for col in df.columns:
+        if col in ['Ciudad', 'Categoria', 'Nombre_Insumo', 'Fuente']:
+            df[col] = df[col].astype('category')
+    return df
+
 df_m, df_j, df_city, df_nac, df_ext, df_h_cat = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 df_camacol, df_icoced, df_ipc, df_reajuste = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 df_b100_ins, df_b100_cat, df_b100_city, df_b100_nac = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -121,11 +128,15 @@ def recargar_datos():
         df_pesos['Categoria'] = df_pesos['Categoria'].astype(str).str.upper().str.replace('M,O', 'M.O', case=False).str.strip()
         df_pesos.loc[df_pesos['Categoria'].isin(['TOTAL M.O.', 'TOTAL M.O', 'TOTAL MANO DE OBRA']), 'Categoria'] = 'TOTAL M.O.'
         
+        df_insumos = optimizar_memoria(df_insumos)
+        df_pesos = optimizar_memoria(df_pesos)
+        df_precios = optimizar_memoria(df_precios)
+        
         df_precios['Fecha'] = pd.to_datetime(df_precios['Fecha'], errors='coerce', dayfirst=True)
         df_precios = df_precios.dropna(subset=['Fecha'])
         df_precios['Fecha'] = df_precios['Fecha'].dt.to_period('M').dt.to_timestamp()
         df_precios['Valor_Unitario'] = pd.to_numeric(df_precios['Valor_Unitario'].astype(str).str.replace(',', ''), errors='coerce')
-        df_precios = df_precios.groupby(['Ciudad', 'Nombre_Insumo', 'Fecha'], as_index=False)['Valor_Unitario'].mean()
+        df_precios = df_precios.groupby(['Ciudad', 'Nombre_Insumo', 'Fecha'], as_index=False, observed=True)['Valor_Unitario'].mean()
         
         df_m = pd.merge(df_precios, df_insumos[['Nombre_Insumo', 'Ciudad', 'Categoria', 'Peso_Insumo_en_Categoria']], on=['Nombre_Insumo', 'Ciudad'], how='inner')
         df_m['Peso_Insumo_en_Categoria'] = pd.to_numeric(df_m['Peso_Insumo_en_Categoria'], errors='coerce')
@@ -141,6 +152,7 @@ def recargar_datos():
         df_m = pd.merge(df_m, df_lookup.rename(columns={'Fecha': 'Fecha_Año_Anterior', 'Valor_Unitario': 'Val_Año_Ant'}), on=['Ciudad', 'Nombre_Insumo', 'Fecha_Año_Anterior'], how='left')
         
         del df_lookup
+        gc.collect() # Limpieza activa de RAM
         
         df_m['Var_Mensual_Ins'] = (df_m['Valor_Unitario'] / df_m['Val_Mes_Ant']) - 1
         df_m['Var_Acum_Ins'] = (df_m['Valor_Unitario'] / df_m['Val_Dic_Ant']) - 1
@@ -149,18 +161,18 @@ def recargar_datos():
         df_m['Var_Acum_Ins'] = df_m['Var_Acum_Ins'].replace([np.inf, -np.inf], 0).fillna(df_m['Var_Mensual_Ins'])
         df_m['Var_Anual_Ins'] = df_m['Var_Anual_Ins'].replace([np.inf, -np.inf], 0).fillna(0)
         
-        # =============================================================
-        # 1. MOTOR ORIGINAL BLINDADO (DASHBOARD, MATRIZ Y RESUMEN)
-        # =============================================================
+        df_m = optimizar_memoria(df_m) 
+        
+        # MOTOR 1 (DASHBOARD)
         df_m['Inc_Men_Cat'] = df_m['Var_Mensual_Ins'] * df_m['Peso_Insumo_en_Categoria']
         df_m['Inc_Acum_Cat'] = df_m['Var_Acum_Ins'] * df_m['Peso_Insumo_en_Categoria']
         df_m['Inc_Anual_Cat'] = df_m['Var_Anual_Ins'] * df_m['Peso_Insumo_en_Categoria']
         
-        df_c = df_m.groupby(['Fecha', 'Ciudad', 'Categoria'])[['Inc_Men_Cat', 'Inc_Acum_Cat', 'Inc_Anual_Cat']].sum().reset_index()
+        df_c = df_m.groupby(['Fecha', 'Ciudad', 'Categoria'], observed=True)[['Inc_Men_Cat', 'Inc_Acum_Cat', 'Inc_Anual_Cat']].sum().reset_index()
         df_c.columns = ['Fecha', 'Ciudad', 'Categoria', 'Var_Cat_Men', 'Var_Cat_Acum', 'Var_Cat_Anual']
         
-        mask_mo = df_c['Categoria'].str.contains('M.O', regex=False) | df_c['Categoria'].str.contains('MANO DE OBRA', regex=False)
-        df_mo_consolidado = df_c[mask_mo].groupby(['Fecha', 'Ciudad']).agg({'Var_Cat_Men': lambda x: x[x!=0].mean() if len(x[x!=0])>0 else 0, 'Var_Cat_Acum': lambda x: x[x!=0].mean() if len(x[x!=0])>0 else 0, 'Var_Cat_Anual': lambda x: x[x!=0].mean() if len(x[x!=0])>0 else 0}).reset_index()
+        mask_mo = df_c['Categoria'].astype(str).str.contains('M.O', regex=False) | df_c['Categoria'].astype(str).str.contains('MANO DE OBRA', regex=False)
+        df_mo_consolidado = df_c[mask_mo].groupby(['Fecha', 'Ciudad'], observed=True).agg({'Var_Cat_Men': lambda x: x[x!=0].mean() if len(x[x!=0])>0 else 0, 'Var_Cat_Acum': lambda x: x[x!=0].mean() if len(x[x!=0])>0 else 0, 'Var_Cat_Anual': lambda x: x[x!=0].mean() if len(x[x!=0])>0 else 0}).reset_index()
         if not df_mo_consolidado.empty:
             df_mo_consolidado['Categoria'] = 'TOTAL M.O.'
             df_c_final = pd.concat([df_c[~mask_mo], df_mo_consolidado], ignore_index=True)
@@ -177,26 +189,26 @@ def recargar_datos():
         df_j['Inc_NoVIS_Acum'] = df_j['Var_Cat_Acum'] * df_j['Peso_No_VIS']
         df_j['Inc_NoVIS_Anual'] = df_j['Var_Cat_Anual'] * df_j['Peso_No_VIS']
         
-        df_city = df_j.groupby(['Fecha', 'Ciudad'])[['Inc_VIS_Acum', 'Inc_NoVIS_Acum', 'Inc_VIS_Men', 'Inc_NoVIS_Men', 'Inc_VIS_Anual', 'Inc_NoVIS_Anual']].sum().reset_index()
+        df_city = df_j.groupby(['Fecha', 'Ciudad'], observed=True)[['Inc_VIS_Acum', 'Inc_NoVIS_Acum', 'Inc_VIS_Men', 'Inc_NoVIS_Men', 'Inc_VIS_Anual', 'Inc_NoVIS_Anual']].sum().reset_index()
         df_city['Tot_City_Acum'] = (df_city['Inc_VIS_Acum'] + df_city['Inc_NoVIS_Acum']) / 2
         df_city['Tot_City_Men'] = (df_city['Inc_VIS_Men'] + df_city['Inc_NoVIS_Men']) / 2
         df_city['Tot_City_Anual'] = (df_city['Inc_VIS_Anual'] + df_city['Inc_NoVIS_Anual']) / 2
         
-        df_nac = df_city.groupby('Fecha').agg({'Tot_City_Acum': 'mean', 'Tot_City_Men': 'mean', 'Tot_City_Anual': 'mean'}).reset_index()
+        df_nac = df_city.groupby('Fecha', observed=True).agg({'Tot_City_Acum': 'mean', 'Tot_City_Men': 'mean', 'Tot_City_Anual': 'mean'}).reset_index()
 
-        # =============================================================
-        # 2. MOTOR INDEPENDIENTE BASE 100 (SOLO PARA PESTAÑA 9)
-        # =============================================================
+        gc.collect() # Limpieza activa de RAM
+
+        # MOTOR 2 (BASE 100)
         df_m['Factor_Men_Ins'] = 1 + df_m['Var_Mensual_Ins'].fillna(0)
-        df_m['Base100_Ins'] = df_m.groupby(['Ciudad', 'Nombre_Insumo'])['Factor_Men_Ins'].cumprod() * 100
+        df_m['Base100_Ins'] = df_m.groupby(['Ciudad', 'Nombre_Insumo'], observed=True)['Factor_Men_Ins'].cumprod() * 100
         df_b100_ins = df_m[['Fecha', 'Ciudad', 'Categoria', 'Nombre_Insumo', 'Base100_Ins']].copy()
 
         df_m['B100_x_PesoIns'] = df_m['Base100_Ins'] * df_m['Peso_Insumo_en_Categoria']
-        df_b100_cat = df_m.groupby(['Fecha', 'Ciudad', 'Categoria'])['B100_x_PesoIns'].sum().reset_index()
+        df_b100_cat = df_m.groupby(['Fecha', 'Ciudad', 'Categoria'], observed=True)['B100_x_PesoIns'].sum().reset_index()
         df_b100_cat.rename(columns={'B100_x_PesoIns': 'Base100_Cat'}, inplace=True)
         
-        mask_mo_b100 = df_b100_cat['Categoria'].str.contains('M.O', regex=False) | df_b100_cat['Categoria'].str.contains('MANO DE OBRA', regex=False)
-        df_mo_b100 = df_b100_cat[mask_mo_b100].groupby(['Fecha', 'Ciudad'])['Base100_Cat'].mean().reset_index()
+        mask_mo_b100 = df_b100_cat['Categoria'].astype(str).str.contains('M.O', regex=False) | df_b100_cat['Categoria'].astype(str).str.contains('MANO DE OBRA', regex=False)
+        df_mo_b100 = df_b100_cat[mask_mo_b100].groupby(['Fecha', 'Ciudad'], observed=True)['Base100_Cat'].mean().reset_index()
         if not df_mo_b100.empty:
             df_mo_b100['Categoria'] = 'TOTAL M.O.'
             df_b100_cat = pd.concat([df_b100_cat[~mask_mo_b100], df_mo_b100], ignore_index=True)
@@ -204,19 +216,21 @@ def recargar_datos():
         df_b100_cat_p = pd.merge(df_b100_cat, df_pesos[['Ciudad', 'Categoria', 'Peso_VIS', 'Peso_No_VIS']], on=['Ciudad', 'Categoria'], how='inner')
         df_b100_cat_p['Peso_Prom'] = (df_b100_cat_p['Peso_VIS'] + df_b100_cat_p['Peso_No_VIS']) / 2
         df_b100_cat_p['B100_x_PesoCat'] = df_b100_cat_p['Base100_Cat'] * df_b100_cat_p['Peso_Prom']
-        df_b100_city = df_b100_cat_p.groupby(['Fecha', 'Ciudad'])['B100_x_PesoCat'].sum().reset_index()
+        df_b100_city = df_b100_cat_p.groupby(['Fecha', 'Ciudad'], observed=True)['B100_x_PesoCat'].sum().reset_index()
         df_b100_city.rename(columns={'B100_x_PesoCat': 'Base100_City'}, inplace=True)
 
-        df_b100_nac = df_b100_city.groupby('Fecha')['Base100_City'].mean().reset_index()
+        df_b100_nac = df_b100_city.groupby('Fecha', observed=True)['Base100_City'].mean().reset_index()
         df_b100_nac.rename(columns={'Base100_City': 'Base100_Nac'}, inplace=True)
 
         del df_precios, df_insumos, df_pesos, df_c, df_c_final, df_b100_cat_p
+        gc.collect()
 
     if not df_ext.empty:
+        df_ext = optimizar_memoria(df_ext)
         df_ext['Fecha_Align'] = pd.to_datetime(df_ext['Fecha'], errors='coerce', dayfirst=True).dt.to_period('M').dt.to_timestamp()
-        for c in ['Acumulada', 'Mensual', 'Anual']: df_ext[c] = pd.to_numeric(df_ext[c].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
-        df_ext['Fuente_Up'] = df_ext['Fuente'].apply(limpiar_texto)
-        df_ext['Cat_Up'] = df_ext['Categoria'].apply(limpiar_texto)
+        for c in ['Acumulada', 'Mensual', 'Anual']: df_ext[c] = pd.to_numeric(df_ext[c].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0).astype('float32')
+        df_ext['Fuente_Up'] = df_ext['Fuente'].astype(str).apply(limpiar_texto)
+        df_ext['Cat_Up'] = df_ext['Categoria'].astype(str).apply(limpiar_texto)
         df_ext['Index_Ext'] = 1 + df_ext['Acumulada']
         df_ext_lkp = df_ext[['Fuente_Up', 'Cat_Up', 'Fecha_Align', 'Index_Ext']].copy()
         df_ext['Fecha_Mes_Ant'] = df_ext['Fecha_Align'] - pd.DateOffset(months=1)
@@ -238,7 +252,7 @@ def recargar_datos():
     if not df_ext.empty: fechas_todas.update(df_ext['Fecha_Align'].dropna().tolist())
 
     fechas_disp = sorted(list(fechas_todas))
-    zonas_disp = ["Nacional (Promedio)"] + list(df_city['Ciudad'].unique()) if not df_city.empty else []
+    zonas_disp = ["Nacional (Promedio)"] + list(df_city['Ciudad'].dropna().unique()) if not df_city.empty else []
 
     if fechas_disp:
         fecha_fin_defecto = fechas_disp[-1] 
@@ -395,7 +409,6 @@ def serve_layout():
         ])
     ])
 
-    # --- NUEVA PESTAÑA 10: AUDITORÍA DE INCIDENCIAS ---
     layout_incidencias = html.Div([
         dbc.Row(dbc.Col(html.H5("🔎 Auditoría de Incidencias (Verificación Matemática)", className="fw-bold", style={'color': C_AZUL}), width=12), className="mb-2"),
         dbc.Row(dbc.Col(html.P("Esta tabla detalla matemáticamente el impacto de cada categoría. Fórmula: Variación de la Categoría × Peso Promedio = Incidencia en la Ciudad.", className="text-muted"), width=12), className="mb-3"),
@@ -412,7 +425,7 @@ def serve_layout():
         dbc.Tab(layout_simulador, label="🎛️ 7. Simulador", tab_id="t7", label_style={'color': C_AMARILLO_REA, 'fontWeight': 'bold'}),
         dbc.Tab(layout_chatbot, label="✨ 8. Gemini IA", tab_id="t8", label_style={'color': '#8B5CF6', 'fontWeight': 'bold'}),
         dbc.Tab(layout_base100, label="💯 9. Base 100", tab_id="t9", label_style={'color': C_TEAL, 'fontWeight': 'bold'}),
-        dbc.Tab(layout_incidencias, label="🔎 10. Incidencias", tab_id="t10", label_style={'color': '#d97706', 'fontWeight': 'bold'}) # Naranja para auditoría
+        dbc.Tab(layout_incidencias, label="🔎 10. Incidencias", tab_id="t10", label_style={'color': '#d97706', 'fontWeight': 'bold'}) 
     ], active_tab="t1", className="mb-3")
 
     return dbc.Container([header_global, tabs], fluid=True, style={'backgroundColor': C_GRIS_BG, 'minHeight': '100vh', 'padding': '15px 25px'})
@@ -466,8 +479,8 @@ def actualizar_matriz(fecha_sel):
     if not fecha_sel or df_j.empty: raise dash.exceptions.PreventUpdate
     fe = df_j[df_j['Fecha'] <= pd.to_datetime(fecha_sel)]['Fecha'].max()
     df_b = df_j[df_j['Fecha'] == fe].copy()
-    ciudades = sorted(df_b['Ciudad'].unique())
-    df_mat = pd.DataFrame({'Categoria': sorted(df_b['Categoria'].unique())})
+    ciudades = sorted(df_b['Ciudad'].dropna().unique())
+    df_mat = pd.DataFrame({'Categoria': sorted(df_b['Categoria'].dropna().unique())})
     df_mat['id'] = df_mat['Categoria']
     for c in ciudades:
         d = df_b[df_b['Ciudad']==c].set_index('Categoria')
@@ -475,7 +488,7 @@ def actualizar_matriz(fecha_sel):
         df_mat[f'Acum. {c}'] = df_mat['Categoria'].map(d['Var_Cat_Acum'])
         df_mat[f'YoY. {c}'] = df_mat['Categoria'].map(d['Var_Cat_Anual'])
     fmt = Format(scheme=Scheme.percentage, precision=2)
-    cols = [{'name': c, 'id': c} if c == 'Categoria' else {'name': c, 'id': c, 'type': 'numeric', 'format': fmt} for c in df_mat.columns if c != 'id']
+    cols = [{'name': str(c), 'id': str(c)} if c == 'Categoria' else {'name': str(c), 'id': str(c), 'type': 'numeric', 'format': fmt} for c in df_mat.columns if c != 'id']
     return dash_table.DataTable(
         id='tabla_matriz_principal', data=df_mat.to_dict('records'), columns=cols, 
         style_data={'cursor':'pointer'}, 
@@ -499,9 +512,9 @@ def detalle_insumos(ac, data_matriz, fs):
     df_b = df_m[(df_m['Fecha']==fe)&(df_m['Categoria']==cat)]
     if df_b.empty: return f"Detalle: {cat}", html.Div("No hay datos para esta categoría.")
     
-    df_i = pd.DataFrame({'Insumo': sorted(df_b['Nombre_Insumo'].unique())})
+    df_i = pd.DataFrame({'Insumo': sorted(df_b['Nombre_Insumo'].dropna().unique())})
     df_i['id'] = df_i['Insumo']
-    for c in df_b['Ciudad'].unique():
+    for c in df_b['Ciudad'].dropna().unique():
         d = df_b[df_b['Ciudad']==c].set_index('Nombre_Insumo')
         df_i[f'Precio {c}'] = df_i['Insumo'].map(d['Valor_Unitario'])
         df_i[f'Men. {c}'] = df_i['Insumo'].map(d['Var_Mensual_Ins'])
@@ -513,9 +526,9 @@ def detalle_insumos(ac, data_matriz, fs):
     
     cols = []
     for c in df_i.columns:
-        if c == 'Insumo': cols.append({'name': c, 'id': c})
-        elif 'Precio' in c: cols.append({'name': c, 'id': c, 'type': 'numeric', 'format': fmt_u})
-        elif c != 'id': cols.append({'name': c, 'id': c, 'type': 'numeric', 'format': fmt_p})
+        if c == 'Insumo': cols.append({'name': str(c), 'id': str(c)})
+        elif 'Precio' in c: cols.append({'name': str(c), 'id': str(c), 'type': 'numeric', 'format': fmt_u})
+        elif c != 'id': cols.append({'name': str(c), 'id': str(c), 'type': 'numeric', 'format': fmt_p})
         
     return f"Detalle: {cat}", dash_table.DataTable(
         id='tabla_insumos_drill', data=df_i.to_dict('records'), columns=cols, 
@@ -609,10 +622,10 @@ def reporte_pdf(fs):
     
     pm = df_b.pivot_table(index='Categoria', columns='Ciudad', values='Var_Cat_Men', aggfunc='mean').reset_index()
     fmt = Format(scheme=Scheme.percentage, precision=2)
-    t1 = dash_table.DataTable(data=pm.to_dict('records'), columns=[{'name':c, 'id':c} if c=='Categoria' else {'name':c, 'id':c, 'type':'numeric', 'format':fmt} for c in pm.columns])
+    t1 = dash_table.DataTable(data=pm.to_dict('records'), columns=[{'name':str(c), 'id':str(c)} if c=='Categoria' else {'name':str(c), 'id':str(c), 'type':'numeric', 'format':fmt} for c in pm.columns])
     
     secciones = []
-    for c in [x for x in df_city['Ciudad'].unique() if x != "Nacional (Promedio)"]:
+    for c in [x for x in df_city['Ciudad'].dropna().unique() if x != "Nacional (Promedio)"]:
         d_c = df_m[(df_m['Fecha']==fe)&(df_m['Ciudad']==c)]
         al = d_c.sort_values('Var_Mensual_Ins', ascending=False).head(10)[['Nombre_Insumo','Var_Mensual_Ins']]
         ba = d_c.sort_values('Var_Mensual_Ins', ascending=True).head(10)[['Nombre_Insumo','Var_Mensual_Ins']]
@@ -650,6 +663,9 @@ def simulador(smo, sac, sce, fs):
 
 @app.callback(Output('output_chat', 'children'), Input('btn_chat', 'n_clicks'), State('input_chat', 'value'), State('filtro_fecha_fin', 'value'), prevent_initial_call=True)
 def chatbot_gemini(nc, txt, fs):
+    # OPTIMIZACIÓN: Carga Perezosa (Lazy Loading) de IA solo al usarla
+    import google.generativeai as genai
+    
     if not txt or df_m.empty: return "Por favor, escribe una pregunta."
     
     fe = df_m[df_m['Fecha'] <= pd.to_datetime(fs)]['Fecha'].max()
@@ -796,7 +812,7 @@ def actualizar_dashboard(fecha_inicio, fecha_fin, zona_sel, tipo_m, num_anios):
     elif tipo_m == "Acumulada": col_var, col_inc = 'Var_Cat_Acum', 'Inc_Acum_Prom'
     else: col_var, col_inc = 'Var_Cat_Anual', 'Inc_Anual_Prom'
         
-    df_plot = df_b_base.groupby('Categoria').agg({'Peso_Promedio': 'mean', col_inc: 'sum', col_var: 'mean'}).reset_index()
+    df_plot = df_b_base.groupby('Categoria', observed=True).agg({'Peso_Promedio': 'mean', col_inc: 'sum', col_var: 'mean'}).reset_index()
     umbral_bub = df_plot[col_var].abs().quantile(0.80)
     df_plot['Label'] = df_plot.apply(lambda r: r['Categoria'] if abs(r[col_var]) >= umbral_bub else "", axis=1)
     
@@ -829,9 +845,9 @@ def generar_grafico_comparativo_agrupado(fecha_sel, zona_sel, cats_sel):
     df_b = df_j[df_j['Fecha'] == fecha_efectiva].copy()
     if zona_sel and zona_sel != "Nacional (Promedio)": df_b = df_b[df_b['Ciudad'] == zona_sel]
     df_b['Cat_Clean'] = df_b['Categoria'].apply(limpiar_texto)
-    dict_con = df_b.groupby('Cat_Clean')['Var_Cat_Acum'].mean().to_dict()
+    dict_con = df_b.groupby('Cat_Clean', observed=True)['Var_Cat_Acum'].mean().to_dict()
     
-    df_e = df_ext[pd.to_datetime(df_ext['Fecha_Align']) <= fecha_dt].sort_values('Fecha_Align').groupby(['Fuente_Up', 'Cat_Up']).tail(1)
+    df_e = df_ext[pd.to_datetime(df_ext['Fecha_Align']) <= fecha_dt].sort_values('Fecha_Align').groupby(['Fuente_Up', 'Cat_Up'], observed=True).tail(1)
     df_e['Cat_Clean'] = df_e['Cat_Up'].apply(limpiar_texto)
     dict_cam = df_e[df_e['Fuente_Up'].astype(str).str.contains('CAMACOL', case=False, na=False)].set_index('Cat_Clean')['Acumulada'].to_dict()
     dict_ico = df_e[df_e['Fuente_Up'].astype(str).str.contains('ICOCED', case=False, na=False)].set_index('Cat_Clean')['Acumulada'].to_dict()
@@ -862,12 +878,17 @@ def generar_grafico_comparativo_agrupado(fecha_sel, zona_sel, cats_sel):
     [Input('filtro_insumo_detalle', 'value'), Input('filtro_zona_insumo', 'value'), Input('filtro_fecha_inicio', 'value'), Input('filtro_fecha_fin', 'value')]
 )
 def actualizar_analisis_insumo(insumo_sel, zona_sel, fecha_inicio, fecha_fin):
+    # OPTIMIZACIÓN: Carga Perezosa (Solo llama las matemáticas pesadas cuando vas a la Pestaña 5)
+    from sklearn.linear_model import Ridge
+    from sklearn.preprocessing import PolynomialFeatures
+    from sklearn.pipeline import make_pipeline
+
     if not all([insumo_sel, fecha_inicio, fecha_fin]): raise dash.exceptions.PreventUpdate
     fini, ffin = pd.to_datetime(fecha_inicio), pd.to_datetime(fecha_fin)
     df_r = df_m[(df_m['Fecha'] >= fini) & (df_m['Fecha'] <= ffin)]
 
     if zona_sel == "Nacional (Promedio)":
-        df_i = df_r[df_r['Nombre_Insumo'] == insumo_sel].groupby('Fecha').mean(numeric_only=True).reset_index()
+        df_i = df_r[df_r['Nombre_Insumo'] == insumo_sel].groupby('Fecha', observed=True).mean(numeric_only=True).reset_index()
         cat_insumo = df_r[df_r['Nombre_Insumo'] == insumo_sel]['Categoria'].iloc[0] if not df_r[df_r['Nombre_Insumo'] == insumo_sel].empty else None
     else:
         df_i = df_r[(df_r['Nombre_Insumo'] == insumo_sel) & (df_r['Ciudad'] == zona_sel)].copy()
@@ -879,7 +900,7 @@ def actualizar_analisis_insumo(insumo_sel, zona_sel, fecha_inicio, fecha_fin):
     fig_precio.add_trace(go.Scatter(x=df_i['Fecha'], y=df_i['Valor_Unitario'], mode='lines+markers+text', name='Real', line=dict(color='#64748B', width=3), text=df_i['Valor_Unitario'], textposition='top center', texttemplate='$%{text:,.0f}'))
 
     df_train = df_m[df_m['Fecha'] <= ffin].copy()
-    if zona_sel == "Nacional (Promedio)": df_train = df_train[df_train['Nombre_Insumo'] == insumo_sel].groupby('Fecha').mean(numeric_only=True).reset_index()
+    if zona_sel == "Nacional (Promedio)": df_train = df_train[df_train['Nombre_Insumo'] == insumo_sel].groupby('Fecha', observed=True).mean(numeric_only=True).reset_index()
     else: df_train = df_train[(df_train['Nombre_Insumo'] == insumo_sel) & (df_train['Ciudad'] == zona_sel)].copy()
     df_train = df_train.dropna(subset=['Valor_Unitario']).sort_values('Fecha')
     
@@ -918,7 +939,6 @@ def actualizar_analisis_insumo(insumo_sel, zona_sel, fecha_inicio, fecha_fin):
     fig_var.update_layout(title="<b>% Variación Acumulada</b>", template="plotly_white", yaxis=dict(tickformat='.1%'), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0))
     return fig_precio, fig_var
 
-# --- NUEVO CALLBACK: AUDITORÍA DE INCIDENCIAS ---
 @app.callback(
     Output('tbl_incidencias_auditoria', 'children'),
     [Input('filtro_fecha_fin', 'value')]
@@ -940,7 +960,7 @@ def update_incidencias_auditoria(fs):
     df_show = df_b[['Ciudad', 'Categoria', 'Peso_Promedio', 'Var_Cat_Men', 'Incidencia_Men', 'Var_Cat_Acum', 'Incidencia_Acum', 'Var_Cat_Anual', 'Incidencia_YoY']].copy()
     
     fmt_p = Format(scheme=Scheme.percentage, precision=4)
-    cols = [{'name': c, 'id': c} if c in ['Ciudad', 'Categoria'] else {'name': c, 'id': c, 'type': 'numeric', 'format': fmt_p} for c in df_show.columns]
+    cols = [{'name': str(c), 'id': str(c)} if c in ['Ciudad', 'Categoria'] else {'name': str(c), 'id': str(c), 'type': 'numeric', 'format': fmt_p} for c in df_show.columns]
     
     return dash_table.DataTable(
         data=df_show.to_dict('records'), columns=cols,
@@ -963,10 +983,10 @@ def update_b100_dropdowns(nivel):
     elif nivel == 'city':
         return opts_ciudad, opts_ciudad[0]['value'] if opts_ciudad else None, False, [], None, True
     elif nivel == 'cat':
-        opts_cat = [{'label': c, 'value': c} for c in df_b100_cat['Categoria'].dropna().unique()]
+        opts_cat = [{'label': str(c), 'value': str(c)} for c in df_b100_cat['Categoria'].dropna().unique()]
         return opts_ciudad, opts_ciudad[0]['value'] if opts_ciudad else None, False, opts_cat, opts_cat[0]['value'] if opts_cat else None, False
     elif nivel == 'ins':
-        opts_ins = [{'label': i, 'value': i} for i in insumos_disp]
+        opts_ins = [{'label': str(i), 'value': str(i)} for i in insumos_disp]
         return opts_ciudad, opts_ciudad[0]['value'] if opts_ciudad else None, False, opts_ins, opts_ins[0]['value'] if opts_ins else None, False
     return [], None, True, [], None, True
 
@@ -1002,9 +1022,9 @@ def update_b100_tables(fs):
     def make_tbl(df_t, idx_cols, val_col):
         df_copy = df_t.copy()
         df_copy['Fecha_Str'] = df_copy['Fecha'].dt.strftime('%Y-%m')
-        piv = df_copy.pivot_table(index=idx_cols, columns='Fecha_Str', values=val_col, aggfunc='first').reset_index()
+        piv = df_copy.pivot_table(index=idx_cols, columns='Fecha_Str', values=val_col, aggfunc='first', observed=True).reset_index()
         
-        cols = [{'name': c, 'id': c} if c in idx_cols else {'name': c, 'id': c, 'type': 'numeric', 'format': fmt} for c in piv.columns]
+        cols = [{'name': str(c), 'id': str(c)} if c in idx_cols else {'name': str(c), 'id': str(c), 'type': 'numeric', 'format': fmt} for c in piv.columns]
         return dash_table.DataTable(
             data=piv.to_dict('records'), columns=cols,
             style_header={'backgroundColor': C_AZUL, 'color': 'white', 'fontWeight': 'bold', 'textAlign': 'center'},
