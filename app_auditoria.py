@@ -215,13 +215,11 @@ if uploaded_file is not None:
             tot_aseg = df[c_aseg_v].sum() if c_aseg_v else 0
             tot_cons = df[c_cons_v].sum() if c_cons_v else 0
 
-        # === NUEVO: EXTRACCIÓN ESPECÍFICA DE ASEGURADO DESDE COSTOS DIRECTOS ===
         fila_cd = df[df[col_desc].astype(str).str.upper() == "COSTOS DIRECTOS"]
-        if fila_cd.empty: # Búsqueda flexible por si tiene espacios extra
+        if fila_cd.empty:
             fila_cd = df[df[col_desc].astype(str).str.upper().str.contains("COSTOS DIRECTOS", na=False)]
             
         if not fila_cd.empty and c_aseg_v:
-            # Sobreescribimos el total asegurado con el valor de esta fila específica
             tot_aseg = limpiar_numero(fila_cd.iloc[0][c_aseg_v])
 
         # === APLICACIÓN DE AJUSTE Y CÁLCULOS ===
@@ -246,13 +244,14 @@ if uploaded_file is not None:
                     elif "REAJUSTE DE OBRA" in desc_val or "REAJUSTES DE OBRA" in desc_val:
                         val_reajustes = limpiar_numero(row[c_proy_v])
 
-        # ESPACIO RESERVADO PARA EL BANNER
+        # ESPACIO RESERVADO PARA EL BANNER Y LA GRÁFICA DE HISTÓRICO
         banner_container = st.empty()
+        chart_historico_container = st.empty()
 
         # ==========================================
-        # INTERFAZ DE PESTAÑAS (3 HOJAS)
+        # INTERFAZ DE PESTAÑAS (4 HOJAS)
         # ==========================================
-        tab_capitulos, tab_items, tab_prog = st.tabs(["📑 Hoja 1: Resumen de Capítulos", "🗂️ Hoja 2: Detalle por Ítems", "🗓️ Hoja 3: Programación"])
+        tab_capitulos, tab_items, tab_prog, tab_hist = st.tabs(["📑 Hoja 1: Resumen Capítulos", "🗂️ Hoja 2: Detalle Ítems", "🗓️ Hoja 3: Programación", "📈 Hoja 4: Histórico"])
 
         with tab_prog:
             st.markdown('<div class="subtitulo">🗓️ % Programa Vs % Consumido</div>', unsafe_allow_html=True)
@@ -271,7 +270,6 @@ if uploaded_file is not None:
                 meses_tot = (val_f_fin - val_f_inicio).days / 30.0
             if val_f_inicio and val_f_auditoria:
                 meses_ejec = (val_f_auditoria - val_f_inicio).days / 30.0
-                
             meses_falt = meses_tot - meses_ejec
 
             st.markdown(f"""
@@ -286,6 +284,61 @@ if uploaded_file is not None:
             val_av_real = c4.number_input("% avance real", value=0.0, step=0.1, format="%.1f")
             val_av_prog = c5.number_input("% avance programado", value=0.0, step=0.1, format="%.1f")
             val_dias_atr = c6.number_input("Días de atraso", value=0, step=1)
+
+        # ---> HOJA 4: HISTÓRICO DE PROYECCIONES
+        with tab_hist:
+            st.markdown('<div class="subtitulo">📝 Digitación del Histórico de Proyecciones</div>', unsafe_allow_html=True)
+            st.info("Ingresa los valores de las auditorías anteriores. La Diferencia y el % se calcularán automáticamente y se graficarán debajo del banner.")
+            
+            # Lógica de detección de proyecto "5183 VIDA PARK" para precargar datos
+            if '5183' in str(nombre_proyecto) and 'VIDA PARK' in str(nombre_proyecto).upper():
+                datos_por_defecto = pd.DataFrame({
+                    "Auditoría": ["Valor Ppto", "Aud Ago-25", "Aud Nov-25", "Aud Mar-26", "Aud Jun-26"],
+                    "Valor PPTO +Adicionales": [38412924281.0, 40037800036.0, 40105673096.0, 44831742490.0, 43792412209.0],
+                    "Valor proyección": [38412924281.0, 40140547915.0, 40047627996.0, 44685998777.0, 43452442156.0]
+                })
+            else:
+                datos_por_defecto = pd.DataFrame({
+                    "Auditoría": ["Valor Ppto"],
+                    "Valor PPTO +Adicionales": [float(tot_pres)],
+                    "Valor proyección": [float(tot_proy)]
+                })
+
+            if "hist_data" not in st.session_state or st.session_state.get("hist_project") != nombre_proyecto:
+                st.session_state.hist_data = datos_por_defecto
+                st.session_state.hist_project = nombre_proyecto
+
+            # Tabla editable para que el usuario ingrese la data
+            hist_editado = st.data_editor(
+                st.session_state.hist_data,
+                num_rows="dynamic",
+                column_config={
+                    "Auditoría": st.column_config.TextColumn(required=True),
+                    "Valor PPTO +Adicionales": st.column_config.NumberColumn(format="$ %,.0f", required=True),
+                    "Valor proyección": st.column_config.NumberColumn(format="$ %,.0f", required=True)
+                },
+                use_container_width=True,
+                key="hist_editor_table"
+            )
+            
+            st.session_state.hist_data = hist_editado
+            
+            # Calcular diferencias para mostrar en la pestaña
+            df_mostrar = hist_editado.copy()
+            df_mostrar['Diferencia ($)'] = df_mostrar['Valor proyección'].diff().fillna(0)
+            df_mostrar['%'] = (df_mostrar['Diferencia ($)'] / df_mostrar['Valor proyección'].shift(1)).fillna(0) * 100
+            
+            st.markdown("**Vista Previa Calculada:**")
+            st.dataframe(
+                df_mostrar,
+                column_config={
+                    "Valor PPTO +Adicionales": st.column_config.NumberColumn(format="$ %,.0f"),
+                    "Valor proyección": st.column_config.NumberColumn(format="$ %,.0f"),
+                    "Diferencia ($)": st.column_config.NumberColumn(format="$ %,.0f"),
+                    "%": st.column_config.NumberColumn(format="%.1f %%")
+                },
+                use_container_width=True, hide_index=True
+            )
 
         # ==========================================
         # CONSTRUCCIÓN DEL BANNER HTML
@@ -362,8 +415,41 @@ if uploaded_file is not None:
 </div>
 </div>
 </div>"""
-
         banner_container.markdown(html_banner, unsafe_allow_html=True)
+
+        # ==========================================
+        # CONSTRUCCIÓN DE LA GRÁFICA DE HISTÓRICO (DEBAJO DEL BANNER)
+        # ==========================================
+        with chart_historico_container:
+            st.markdown('<div class="titulo-tabla" style="margin-top:0;">📈 Movimiento Proyecciones (Cifras en Miles)</div>', unsafe_allow_html=True)
+            
+            # Preparar datos para Altair (dividiendo por 1000)
+            df_chart = hist_editado.copy()
+            df_chart['Valor PPTO +Adicionales'] = df_chart['Valor PPTO +Adicionales'] / 1000
+            df_chart['Valor proyección'] = df_chart['Valor proyección'] / 1000
+            
+            df_melt_hist = df_chart.melt(id_vars='Auditoría', value_vars=['Valor PPTO +Adicionales', 'Valor proyección'], var_name='Métrica', value_name='Valor')
+            
+            # Gráfica de líneas interactiva
+            orden_x = list(df_chart['Auditoría'])
+            base_line = alt.Chart(df_melt_hist).encode(
+                x=alt.X('Auditoría:N', sort=orden_x, title="", axis=alt.Axis(labelAngle=0)),
+                color=alt.Color('Métrica:N', scale=alt.Scale(domain=['Valor PPTO +Adicionales', 'Valor proyección'], range=['#2E86C1', '#7CB342']), legend=alt.Legend(title="", orient="top"))
+            )
+            
+            lines = base_line.mark_line(point=True, strokeWidth=3).encode(
+                y=alt.Y('Valor:Q', title="Valor ($ Miles)", axis=alt.Axis(format="$,.0f"))
+            )
+            
+            # Etiquetas de texto flotantes condicionales (Arriba para Proyección, Abajo para PPTO)
+            labels = base_line.mark_text(align='center', fontWeight='bold', fontSize=11).encode(
+                y=alt.Y('Valor:Q'),
+                text=alt.Text('Valor:Q', format="$,.0f"),
+                dy=alt.condition(alt.datum.Métrica == 'Valor proyección', alt.value(15), alt.value(-15))
+            )
+            
+            st.altair_chart((lines + labels).interactive(), use_container_width=True)
+            st.markdown("<hr style='margin-top: 5px; margin-bottom: 30px;'>", unsafe_allow_html=True)
 
 
         # ==========================================
