@@ -128,10 +128,17 @@ def extraer_ajuste_causas(file_causas):
     col_desc_c = df_c.columns[0]
     base_row = df_c[df_c[col_desc_c].astype(str).str.upper().str.contains("BASE PPTO", na=False)]
     
+    total_ajuste = 0.0
     if not base_row.empty:
-        val = base_row.iloc[-1][most_recent_col]
-        try: return float(str(val).replace(',', '').replace('$', '').strip()), most_recent_col
-        except: return 0.0, most_recent_col
+        for val in base_row[most_recent_col]:
+            try:
+                val_clean = str(val).replace(',', '').replace('$', '').replace('*', '').strip()
+                if val_clean:
+                    total_ajuste += float(val_clean)
+            except:
+                pass
+        return total_ajuste, most_recent_col
+        
     return 0.0, most_recent_col
 
 if uploaded_file is not None:
@@ -208,6 +215,15 @@ if uploaded_file is not None:
             tot_aseg = df[c_aseg_v].sum() if c_aseg_v else 0
             tot_cons = df[c_cons_v].sum() if c_cons_v else 0
 
+        # === NUEVO: EXTRACCIÓN ESPECÍFICA DE ASEGURADO DESDE COSTOS DIRECTOS ===
+        fila_cd = df[df[col_desc].astype(str).str.upper() == "COSTOS DIRECTOS"]
+        if fila_cd.empty: # Búsqueda flexible por si tiene espacios extra
+            fila_cd = df[df[col_desc].astype(str).str.upper().str.contains("COSTOS DIRECTOS", na=False)]
+            
+        if not fila_cd.empty and c_aseg_v:
+            # Sobreescribimos el total asegurado con el valor de esta fila específica
+            tot_aseg = limpiar_numero(fila_cd.iloc[0][c_aseg_v])
+
         # === APLICACIÓN DE AJUSTE Y CÁLCULOS ===
         tot_pres += ajuste_ppto
         por_consumir = tot_proy - tot_cons
@@ -272,7 +288,7 @@ if uploaded_file is not None:
             val_dias_atr = c6.number_input("Días de atraso", value=0, step=1)
 
         # ==========================================
-        # CONSTRUCCIÓN DEL BANNER HTML (Corregido dividiendo entre 1000)
+        # CONSTRUCCIÓN DEL BANNER HTML
         # ==========================================
         html_banner = f"""<div style="display: flex; width: 100%; gap: 15px; font-family: sans-serif; margin-bottom: 25px;">
 <div style="display: flex; flex: 2.8; background-color: #9DBB61; padding: 15px; border-radius: 8px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1);">
