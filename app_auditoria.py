@@ -290,10 +290,8 @@ if uploaded_file is not None:
             st.markdown('<div class="subtitulo">📝 Digitación del Histórico de Proyecciones</div>', unsafe_allow_html=True)
             st.info("Sube el archivo de Excel con el histórico, o digítalo manualmente. El sistema calculará la Diferencia ($) y el %.")
             
-            # Subida de archivo histórico
             uploaded_hist = st.file_uploader("📥 Subir archivo de Histórico de Desviación (Opcional)", type=['xls', 'xlsx', 'csv'], key='hist_uploader')
             
-            # Detección del proyecto 5183 para auto-carga
             if 'hist_data' not in st.session_state or st.session_state.get('hist_project') != nombre_proyecto:
                 if '5183' in str(nombre_proyecto) and 'VIDA PARK' in str(nombre_proyecto).upper():
                     datos_por_defecto = pd.DataFrame({
@@ -310,7 +308,6 @@ if uploaded_file is not None:
                 st.session_state.hist_data = datos_por_defecto
                 st.session_state.hist_project = nombre_proyecto
 
-            # Leer el archivo subido
             if uploaded_hist is not None and st.session_state.get('last_uploaded_hist') != uploaded_hist.name:
                 try:
                     if uploaded_hist.name.endswith('csv'):
@@ -327,7 +324,6 @@ if uploaded_file is not None:
                 except Exception as e:
                     st.error(f"Error procesando archivo histórico: {e}")
 
-            # Tabla Editable
             hist_editado = st.data_editor(
                 st.session_state.hist_data,
                 num_rows="dynamic",
@@ -342,7 +338,6 @@ if uploaded_file is not None:
             
             st.session_state.hist_data = hist_editado
             
-            # Tabla de previsualización calculada
             df_mostrar = hist_editado.copy()
             df_mostrar['Diferencia ($)'] = df_mostrar['Valor proyección'].diff().fillna(0)
             df_mostrar['%'] = (df_mostrar['Diferencia ($)'] / df_mostrar['Valor proyección'].shift(1)).fillna(0) * 100
@@ -442,7 +437,6 @@ if uploaded_file is not None:
         with chart_historico_container:
             col_g1, col_g2 = st.columns(2)
             
-            # Preparar datos base (dividiendo por 1000)
             df_chart = hist_editado.copy()
             df_chart['Valor PPTO +Adicionales'] = df_chart['Valor PPTO +Adicionales'] / 1000
             df_chart['Valor proyección'] = df_chart['Valor proyección'] / 1000
@@ -457,13 +451,22 @@ if uploaded_file is not None:
                     x=alt.X('Auditoría:N', sort=orden_x, title="", axis=alt.Axis(labelAngle=0)),
                     color=alt.Color('Métrica:N', scale=alt.Scale(domain=['Valor PPTO +Adicionales', 'Valor proyección'], range=['#2E86C1', '#7CB342']), legend=alt.Legend(title="", orient="top"))
                 )
-                lines = base_line.mark_line(point=True, strokeWidth=3).encode(y=alt.Y('Valor:Q', title="Valor ($ Miles)", axis=alt.Axis(format="$,.0f")))
-                labels = base_line.mark_text(align='center', fontWeight='bold', fontSize=11).encode(
-                    y=alt.Y('Valor:Q'),
-                    text=alt.Text('Valor:Q', format="$,.0f"),
-                    dy=alt.condition(alt.datum.Métrica == 'Valor proyección', alt.value(15), alt.value(-15))
+                lines = base_line.mark_line(point=True, strokeWidth=3).encode(y=alt.Y('Valor:Q', title="Valor ($ Miles)", axis=alt.Axis(format="$,.0f", titlePadding=10)))
+                
+                # CORRECCIÓN ALTAIR: Separación de textos por filtro sin usar parámetros dinámicos no soportados en .encode()
+                labels_proy = base_line.transform_filter(alt.datum.Métrica == 'Valor proyección').mark_text(
+                    align='center', baseline='bottom', dy=-10, fontWeight='bold', fontSize=11
+                ).encode(
+                    y=alt.Y('Valor:Q'), text=alt.Text('Valor:Q', format="$,.0f")
                 )
-                st.altair_chart((lines + labels).interactive(), use_container_width=True)
+                
+                labels_ppto = base_line.transform_filter(alt.datum.Métrica == 'Valor PPTO +Adicionales').mark_text(
+                    align='center', baseline='top', dy=10, fontWeight='bold', fontSize=11
+                ).encode(
+                    y=alt.Y('Valor:Q'), text=alt.Text('Valor:Q', format="$,.0f")
+                )
+                
+                st.altair_chart((lines + labels_proy + labels_ppto).interactive(), use_container_width=True)
 
             # --- GRÁFICA 2: Desviación (Híbrida: Barras + Línea) ---
             with col_g2:
@@ -473,35 +476,44 @@ if uploaded_file is not None:
                     df_chart['Diferencia'] = df_chart['Valor proyección'].diff().fillna(0)
                     df_chart['%'] = (df_chart['Diferencia'] / df_chart['Valor proyección'].shift(1)).fillna(0)
                     
-                    data_chart2 = df_chart.iloc[1:].copy() # Quitamos la fila base para que empiece a graficar desde la 2da
+                    data_chart2 = df_chart.iloc[1:].copy() 
                     orden_x2 = list(data_chart2['Auditoría'])
                     
                     base2 = alt.Chart(data_chart2).encode(x=alt.X('Auditoría:N', sort=orden_x2, title="", axis=alt.Axis(labelAngle=0)))
                     
-                    # Barras de Dinero (Eje Y principal)
                     bar = base2.mark_bar(width=40, color='#8CC63F').encode(
                         y=alt.Y('Diferencia:Q', title="Diferencia ($ Miles)", axis=alt.Axis(format="$,.0f"))
                     )
-                    text_bar = bar.mark_text(align='center', fontWeight='bold', color='#002856').encode(
-                        text=alt.Text('Diferencia:Q', format="$,.0f"),
-                        y=alt.Y('Diferencia:Q'),
-                        dy=alt.condition(alt.datum.Diferencia > 0, alt.value(-10), alt.value(10)),
-                        baseline=alt.condition(alt.datum.Diferencia > 0, alt.value('bottom'), alt.value('top'))
+                    
+                    # CORRECCIÓN ALTAIR: Separación de barras positivas y negativas
+                    text_bar_pos = base2.transform_filter(alt.datum.Diferencia >= 0).mark_text(
+                        align='center', baseline='bottom', dy=-5, fontWeight='bold', color='#002856'
+                    ).encode(
+                        y=alt.Y('Diferencia:Q'), text=alt.Text('Diferencia:Q', format="$,.0f")
+                    )
+                    text_bar_neg = base2.transform_filter(alt.datum.Diferencia < 0).mark_text(
+                        align='center', baseline='top', dy=5, fontWeight='bold', color='#002856'
+                    ).encode(
+                        y=alt.Y('Diferencia:Q'), text=alt.Text('Diferencia:Q', format="$,.0f")
                     )
                     
-                    # Línea de Porcentaje (Eje Y Secundario)
                     line2 = base2.mark_line(color='#B5C689', strokeWidth=3, point=alt.OverlayMarkDef(color='#B5C689', size=60)).encode(
                         y=alt.Y('%:Q', title="Porcentaje (%)", axis=alt.Axis(format='%'))
                     )
-                    text_line = line2.mark_text(align='center', fontWeight='bold', color='#002856').encode(
-                        text=alt.Text('%:Q', format=".1%"),
-                        y=alt.Y('%:Q'),
-                        dy=alt.condition(alt.datum['%'] > 0, alt.value(15), alt.value(-15)),
-                        baseline=alt.condition(alt.datum['%'] > 0, alt.value('top'), alt.value('bottom'))
+                    
+                    # CORRECCIÓN ALTAIR: Separación de líneas positivas y negativas
+                    text_line_pos = base2.transform_filter(alt.datum['%'] >= 0).mark_text(
+                        align='center', baseline='bottom', dy=-15, fontWeight='bold', color='#002856'
+                    ).encode(
+                        y=alt.Y('%:Q'), text=alt.Text('%:Q', format=".1%")
+                    )
+                    text_line_neg = base2.transform_filter(alt.datum['%'] < 0).mark_text(
+                        align='center', baseline='top', dy=15, fontWeight='bold', color='#002856'
+                    ).encode(
+                        y=alt.Y('%:Q'), text=alt.Text('%:Q', format=".1%")
                     )
                     
-                    # Superposición de ambas (resolve_scale es el truco para doble eje)
-                    chart2 = alt.layer(bar + text_bar, line2 + text_line).resolve_scale(y='independent')
+                    chart2 = alt.layer(bar + text_bar_pos + text_bar_neg, line2 + text_line_pos + text_line_neg).resolve_scale(y='independent')
                     st.altair_chart(chart2.interactive(), use_container_width=True)
                 else:
                     st.info("Agrega más de una auditoría en la Hoja 4 para ver la gráfica de desviación.")
