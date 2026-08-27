@@ -74,7 +74,7 @@ st.markdown("""
 st.sidebar.markdown("<h2 style='color: #002856; text-align: center;'>Panel de Control</h2>", unsafe_allow_html=True)
 uploaded_file = st.sidebar.file_uploader("1. Archivo PRINCIPAL (.xls / .xlsx)", type=['xls', 'xlsx'])
 st.sidebar.markdown("---")
-uploaded_causas = st.sidebar.file_uploader("2. Archivo CAUSAS (Opcional)", type=['xls', 'xlsx'], help="Sube el archivo de Causas para sumar automáticamente el ajuste de BASE PPTO.")
+uploaded_causas = st.sidebar.file_uploader("2. Archivo CAUSAS (Opcional)", type=['xls', 'xlsx'], help="Sube el archivo de Causas para sumar el ajuste de BASE PPTO.")
 
 def limpiar_numero(valor):
     if pd.isna(valor): return 0.0
@@ -244,7 +244,7 @@ if uploaded_file is not None:
                     elif "REAJUSTE DE OBRA" in desc_val or "REAJUSTES DE OBRA" in desc_val:
                         val_reajustes = limpiar_numero(row[c_proy_v])
 
-        # ESPACIO RESERVADO PARA EL BANNER Y LA GRÁFICA DE HISTÓRICO
+        # ESPACIO RESERVADO PARA EL BANNER Y LAS GRÁFICAS DE HISTÓRICO
         banner_container = st.empty()
         chart_historico_container = st.empty()
 
@@ -288,27 +288,46 @@ if uploaded_file is not None:
         # ---> HOJA 4: HISTÓRICO DE PROYECCIONES
         with tab_hist:
             st.markdown('<div class="subtitulo">📝 Digitación del Histórico de Proyecciones</div>', unsafe_allow_html=True)
-            st.info("Ingresa los valores de las auditorías anteriores. La Diferencia y el % se calcularán automáticamente y se graficarán debajo del banner.")
+            st.info("Sube el archivo de Excel con el histórico, o digítalo manualmente. El sistema calculará la Diferencia ($) y el %.")
             
-            # Lógica de detección de proyecto "5183 VIDA PARK" para precargar datos
-            if '5183' in str(nombre_proyecto) and 'VIDA PARK' in str(nombre_proyecto).upper():
-                datos_por_defecto = pd.DataFrame({
-                    "Auditoría": ["Valor Ppto", "Aud Ago-25", "Aud Nov-25", "Aud Mar-26", "Aud Jun-26"],
-                    "Valor PPTO +Adicionales": [38412924281.0, 40037800036.0, 40105673096.0, 44831742490.0, 43792412209.0],
-                    "Valor proyección": [38412924281.0, 40140547915.0, 40047627996.0, 44685998777.0, 43452442156.0]
-                })
-            else:
-                datos_por_defecto = pd.DataFrame({
-                    "Auditoría": ["Valor Ppto"],
-                    "Valor PPTO +Adicionales": [float(tot_pres)],
-                    "Valor proyección": [float(tot_proy)]
-                })
-
-            if "hist_data" not in st.session_state or st.session_state.get("hist_project") != nombre_proyecto:
+            # Subida de archivo histórico
+            uploaded_hist = st.file_uploader("📥 Subir archivo de Histórico de Desviación (Opcional)", type=['xls', 'xlsx', 'csv'], key='hist_uploader')
+            
+            # Detección del proyecto 5183 para auto-carga
+            if 'hist_data' not in st.session_state or st.session_state.get('hist_project') != nombre_proyecto:
+                if '5183' in str(nombre_proyecto) and 'VIDA PARK' in str(nombre_proyecto).upper():
+                    datos_por_defecto = pd.DataFrame({
+                        "Auditoría": ["Valor Ppto", "Aud Ago-25", "Aud Nov-25", "Aud Mar-26", "Aud Jun-26"],
+                        "Valor PPTO +Adicionales": [38412924281.0, 40037800036.0, 40105673096.0, 44831742490.0, 43792412209.0],
+                        "Valor proyección": [38412924281.0, 40140547915.0, 40047627996.0, 44685998777.0, 43452442156.0]
+                    })
+                else:
+                    datos_por_defecto = pd.DataFrame({
+                        "Auditoría": ["Valor Ppto"],
+                        "Valor PPTO +Adicionales": [float(tot_pres)],
+                        "Valor proyección": [float(tot_proy)]
+                    })
                 st.session_state.hist_data = datos_por_defecto
                 st.session_state.hist_project = nombre_proyecto
 
-            # Tabla editable para que el usuario ingrese la data
+            # Leer el archivo subido
+            if uploaded_hist is not None and st.session_state.get('last_uploaded_hist') != uploaded_hist.name:
+                try:
+                    if uploaded_hist.name.endswith('csv'):
+                        df_up = pd.read_csv(uploaded_hist)
+                    else:
+                        df_up = pd.read_excel(uploaded_hist)
+                    
+                    cols_needed = ["Auditoría", "Valor PPTO +Adicionales", "Valor proyección"]
+                    if all(c in df_up.columns for c in cols_needed):
+                        st.session_state.hist_data = df_up[cols_needed].copy()
+                        st.session_state.last_uploaded_hist = uploaded_hist.name
+                    else:
+                        st.warning("El archivo no contiene las columnas requeridas: 'Auditoría', 'Valor PPTO +Adicionales', 'Valor proyección'.")
+                except Exception as e:
+                    st.error(f"Error procesando archivo histórico: {e}")
+
+            # Tabla Editable
             hist_editado = st.data_editor(
                 st.session_state.hist_data,
                 num_rows="dynamic",
@@ -323,12 +342,12 @@ if uploaded_file is not None:
             
             st.session_state.hist_data = hist_editado
             
-            # Calcular diferencias para mostrar en la pestaña
+            # Tabla de previsualización calculada
             df_mostrar = hist_editado.copy()
             df_mostrar['Diferencia ($)'] = df_mostrar['Valor proyección'].diff().fillna(0)
             df_mostrar['%'] = (df_mostrar['Diferencia ($)'] / df_mostrar['Valor proyección'].shift(1)).fillna(0) * 100
             
-            st.markdown("**Vista Previa Calculada:**")
+            st.markdown("**Vista Previa de Cálculos para la Gráfica:**")
             st.dataframe(
                 df_mostrar,
                 column_config={
@@ -418,37 +437,75 @@ if uploaded_file is not None:
         banner_container.markdown(html_banner, unsafe_allow_html=True)
 
         # ==========================================
-        # CONSTRUCCIÓN DE LA GRÁFICA DE HISTÓRICO (DEBAJO DEL BANNER)
+        # CONSTRUCCIÓN DE GRÁFICAS DE HISTÓRICO (DOBLE COLUMNA)
         # ==========================================
         with chart_historico_container:
-            st.markdown('<div class="titulo-tabla" style="margin-top:0;">📈 Movimiento Proyecciones (Cifras en Miles)</div>', unsafe_allow_html=True)
+            col_g1, col_g2 = st.columns(2)
             
-            # Preparar datos para Altair (dividiendo por 1000)
+            # Preparar datos base (dividiendo por 1000)
             df_chart = hist_editado.copy()
             df_chart['Valor PPTO +Adicionales'] = df_chart['Valor PPTO +Adicionales'] / 1000
             df_chart['Valor proyección'] = df_chart['Valor proyección'] / 1000
             
-            df_melt_hist = df_chart.melt(id_vars='Auditoría', value_vars=['Valor PPTO +Adicionales', 'Valor proyección'], var_name='Métrica', value_name='Valor')
+            # --- GRÁFICA 1: Movimiento ---
+            with col_g1:
+                st.markdown('<div class="titulo-tabla" style="margin-top:0;">📈 Movimiento proyecciones:</div>', unsafe_allow_html=True)
+                df_melt_hist = df_chart.melt(id_vars='Auditoría', value_vars=['Valor PPTO +Adicionales', 'Valor proyección'], var_name='Métrica', value_name='Valor')
+                
+                orden_x = list(df_chart['Auditoría'])
+                base_line = alt.Chart(df_melt_hist).encode(
+                    x=alt.X('Auditoría:N', sort=orden_x, title="", axis=alt.Axis(labelAngle=0)),
+                    color=alt.Color('Métrica:N', scale=alt.Scale(domain=['Valor PPTO +Adicionales', 'Valor proyección'], range=['#2E86C1', '#7CB342']), legend=alt.Legend(title="", orient="top"))
+                )
+                lines = base_line.mark_line(point=True, strokeWidth=3).encode(y=alt.Y('Valor:Q', title="Valor ($ Miles)", axis=alt.Axis(format="$,.0f")))
+                labels = base_line.mark_text(align='center', fontWeight='bold', fontSize=11).encode(
+                    y=alt.Y('Valor:Q'),
+                    text=alt.Text('Valor:Q', format="$,.0f"),
+                    dy=alt.condition(alt.datum.Métrica == 'Valor proyección', alt.value(15), alt.value(-15))
+                )
+                st.altair_chart((lines + labels).interactive(), use_container_width=True)
+
+            # --- GRÁFICA 2: Desviación (Híbrida: Barras + Línea) ---
+            with col_g2:
+                st.markdown('<div class="titulo-tabla" style="margin-top:0;">📉 Desviación proyecciones:</div>', unsafe_allow_html=True)
+                
+                if len(df_chart) > 1:
+                    df_chart['Diferencia'] = df_chart['Valor proyección'].diff().fillna(0)
+                    df_chart['%'] = (df_chart['Diferencia'] / df_chart['Valor proyección'].shift(1)).fillna(0)
+                    
+                    data_chart2 = df_chart.iloc[1:].copy() # Quitamos la fila base para que empiece a graficar desde la 2da
+                    orden_x2 = list(data_chart2['Auditoría'])
+                    
+                    base2 = alt.Chart(data_chart2).encode(x=alt.X('Auditoría:N', sort=orden_x2, title="", axis=alt.Axis(labelAngle=0)))
+                    
+                    # Barras de Dinero (Eje Y principal)
+                    bar = base2.mark_bar(width=40, color='#8CC63F').encode(
+                        y=alt.Y('Diferencia:Q', title="Diferencia ($ Miles)", axis=alt.Axis(format="$,.0f"))
+                    )
+                    text_bar = bar.mark_text(align='center', fontWeight='bold', color='#002856').encode(
+                        text=alt.Text('Diferencia:Q', format="$,.0f"),
+                        y=alt.Y('Diferencia:Q'),
+                        dy=alt.condition(alt.datum.Diferencia > 0, alt.value(-10), alt.value(10)),
+                        baseline=alt.condition(alt.datum.Diferencia > 0, alt.value('bottom'), alt.value('top'))
+                    )
+                    
+                    # Línea de Porcentaje (Eje Y Secundario)
+                    line2 = base2.mark_line(color='#B5C689', strokeWidth=3, point=alt.OverlayMarkDef(color='#B5C689', size=60)).encode(
+                        y=alt.Y('%:Q', title="Porcentaje (%)", axis=alt.Axis(format='%'))
+                    )
+                    text_line = line2.mark_text(align='center', fontWeight='bold', color='#002856').encode(
+                        text=alt.Text('%:Q', format=".1%"),
+                        y=alt.Y('%:Q'),
+                        dy=alt.condition(alt.datum['%'] > 0, alt.value(15), alt.value(-15)),
+                        baseline=alt.condition(alt.datum['%'] > 0, alt.value('top'), alt.value('bottom'))
+                    )
+                    
+                    # Superposición de ambas (resolve_scale es el truco para doble eje)
+                    chart2 = alt.layer(bar + text_bar, line2 + text_line).resolve_scale(y='independent')
+                    st.altair_chart(chart2.interactive(), use_container_width=True)
+                else:
+                    st.info("Agrega más de una auditoría en la Hoja 4 para ver la gráfica de desviación.")
             
-            # Gráfica de líneas interactiva
-            orden_x = list(df_chart['Auditoría'])
-            base_line = alt.Chart(df_melt_hist).encode(
-                x=alt.X('Auditoría:N', sort=orden_x, title="", axis=alt.Axis(labelAngle=0)),
-                color=alt.Color('Métrica:N', scale=alt.Scale(domain=['Valor PPTO +Adicionales', 'Valor proyección'], range=['#2E86C1', '#7CB342']), legend=alt.Legend(title="", orient="top"))
-            )
-            
-            lines = base_line.mark_line(point=True, strokeWidth=3).encode(
-                y=alt.Y('Valor:Q', title="Valor ($ Miles)", axis=alt.Axis(format="$,.0f"))
-            )
-            
-            # Etiquetas de texto flotantes condicionales (Arriba para Proyección, Abajo para PPTO)
-            labels = base_line.mark_text(align='center', fontWeight='bold', fontSize=11).encode(
-                y=alt.Y('Valor:Q'),
-                text=alt.Text('Valor:Q', format="$,.0f"),
-                dy=alt.condition(alt.datum.Métrica == 'Valor proyección', alt.value(15), alt.value(-15))
-            )
-            
-            st.altair_chart((lines + labels).interactive(), use_container_width=True)
             st.markdown("<hr style='margin-top: 5px; margin-bottom: 30px;'>", unsafe_allow_html=True)
 
 
