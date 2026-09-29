@@ -143,13 +143,13 @@ def extraer_ajuste_causas(file_causas):
 
 if uploaded_file is not None:
     try:
-        # CÁLCULOS INICIALES
         ajuste_ppto = 0.0
+        info_col_causas = ""
         if uploaded_causas is not None:
             try:
-                ajuste_ppto, _ = extraer_ajuste_causas(uploaded_causas)
-            except:
-                pass
+                ajuste_ppto, info_col_causas = extraer_ajuste_causas(uploaded_causas)
+            except Exception as e:
+                st.sidebar.warning(f"Error leyendo Causas: {e}")
 
         uploaded_file.seek(0)
         try:
@@ -248,7 +248,7 @@ if uploaded_file is not None:
         chart_historico_container = st.container()
 
         # ==========================================
-        # PREPARACIÓN DE DATOS (CAPÍTULOS E ÍTEMS) ¡RESTAURADO!
+        # PREPARACIÓN DE DATOS (CAPÍTULOS E ÍTEMS)
         # ==========================================
         patron_capitulos = r'^\s*\d{1,2}\s*[-]'
         es_capitulo = df[col_desc].astype(str).str.contains(patron_capitulos, regex=True, na=False)
@@ -318,6 +318,8 @@ if uploaded_file is not None:
                 meses_ejec = (val_f_auditoria - val_f_inicio).days / 30.0
             meses_falt = meses_tot - meses_ejec
 
+            st.session_state['meses_falt'] = meses_falt
+
             st.markdown(f"""
             <div style="background-color: #E2EFD9; padding: 15px; border-radius: 5px; text-align: center; color: black; font-weight: bold; margin-bottom: 20px;">
                 Meses de ejecución total: <span style="color: #257A72; font-size: 1.2rem;">{meses_tot:.1f}</span> &nbsp; | &nbsp; 
@@ -327,9 +329,9 @@ if uploaded_file is not None:
             """, unsafe_allow_html=True)
 
             c4, c5, c6 = st.columns(3)
-            val_av_real = c4.number_input("% avance real", value=0.0, step=0.1, format="%.1f")
-            val_av_prog = c5.number_input("% avance programado", value=0.0, step=0.1, format="%.1f")
-            val_dias_atr = c6.number_input("Días de atraso", value=0, step=1)
+            st.session_state['val_av_real'] = c4.number_input("% avance real", value=0.0, step=0.1, format="%.1f")
+            st.session_state['val_av_prog'] = c5.number_input("% avance programado", value=0.0, step=0.1, format="%.1f")
+            st.session_state['val_dias_atr'] = c6.number_input("Días de atraso", value=0, step=1)
 
         with tab_hist:
             st.markdown('<div class="subtitulo">📝 Digitación del Histórico de Proyecciones</div>', unsafe_allow_html=True)
@@ -364,12 +366,12 @@ if uploaded_file is not None:
                     if all(c in df_up.columns for c in cols_needed):
                         st.session_state.hist_data = df_up[cols_needed].copy()
                         st.session_state.last_uploaded_hist = uploaded_hist.name
+                        st.rerun()
                     else:
                         st.warning("El archivo no contiene las columnas requeridas.")
                 except Exception as e:
                     st.error(f"Error procesando archivo histórico: {e}")
 
-            # CORRECCIÓN BUG validateInput: Se quita format="$ %d" para que el usuario pueda digitar libremente
             hist_editado = st.data_editor(
                 st.session_state.hist_data,
                 num_rows="dynamic",
@@ -381,6 +383,8 @@ if uploaded_file is not None:
                 use_container_width=True,
                 key="hist_editor_table"
             )
+            
+            st.session_state.hist_data = hist_editado
             
             df_mostrar = hist_editado.copy()
             df_mostrar['Diferencia ($)'] = df_mostrar['Valor proyección'].diff().fillna(0)
@@ -541,21 +545,21 @@ if uploaded_file is not None:
             <div style="display: flex; gap: 8px; flex: 1;">
             <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
             <div style="font-weight: 800; color: black; font-size: 0.85rem;">% avance real</div>
-            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_av_real}%</div>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{st.session_state.get('val_av_real', '0.0')}%</div>
             </div>
             <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
             <div style="font-weight: 800; color: black; font-size: 0.85rem;">Días de atraso</div>
-            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_dias_atr}</div>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{st.session_state.get('val_dias_atr', '0')}</div>
             </div>
             </div>
             <div style="display: flex; gap: 8px; flex: 1;">
             <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
             <div style="font-weight: 800; color: black; font-size: 0.85rem;">% avance programado</div>
-            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_av_prog}%</div>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{st.session_state.get('val_av_prog', '0.0')}%</div>
             </div>
             <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
             <div style="font-weight: 800; color: black; font-size: 0.85rem;">Meses faltantes</div>
-            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{meses_falt:.1f}</div>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{st.session_state.get('meses_falt', 0.0):.1f}</div>
             </div>
             </div>
             </div>
@@ -564,12 +568,13 @@ if uploaded_file is not None:
             st.markdown(html_banner, unsafe_allow_html=True)
 
         # ==========================================
-        # LLENADO DE GRÁFICAS HISTÓRICAS (Con datos actualizados en tiempo real)
+        # LLENADO DE GRÁFICAS HISTÓRICAS Y TOP AHORROS/DESFASES
         # ==========================================
         with chart_historico_container:
+            st.markdown('<div class="salto-impresion"></div>', unsafe_allow_html=True)
             col_g1, col_g2 = st.columns(2)
             
-            df_chart = hist_editado.copy()
+            df_chart = st.session_state.hist_data.copy()
             df_chart['Valor PPTO +Adicionales'] = df_chart['Valor PPTO +Adicionales'] / 1000
             df_chart['Valor proyección'] = df_chart['Valor proyección'] / 1000
             
@@ -652,15 +657,71 @@ if uploaded_file is not None:
                     st.altair_chart(chart2, use_container_width=True)
                 else:
                     st.info("Agrega más de una auditoría en la Hoja 4 para ver la gráfica de desviación.")
-        
-            st.markdown("<hr style='margin-top: 5px; margin-bottom: 30px;'>", unsafe_allow_html=True)
 
+            # --- NUEVA SECCIÓN: TOP 3 AHORROS Y DESFASES ---
+            st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+            col_bot1, col_bot2 = st.columns(2)
+            
+            with col_bot1:
+                if c_pres_v and c_proy_v and not df_capitulos.empty:
+                    df_diff = df_capitulos[[col_desc, c_pres_v, c_proy_v]].copy()
+                    # Diferencia = Proyectado - Presupuesto
+                    df_diff['Diferencia'] = df_diff[c_proy_v] - df_diff[c_pres_v]
+                    
+                    # Top 3 Ahorros (Negativos) y Top 3 Desfases (Positivos)
+                    df_ahorros = df_diff[df_diff['Diferencia'] < 0].sort_values(by='Diferencia', ascending=True).head(3)
+                    df_desfases = df_diff[df_diff['Diferencia'] > 0].sort_values(by='Diferencia', ascending=False).head(3)
+                    
+                    html_ah = "<div style='font-family: sans-serif;'>"
+                    html_ah += "<div style='color: #002856; font-size: 1.1rem; font-weight: 800; margin-bottom: 10px;'>Capítulos con ahorros y desfases respecto al PPTO:</div>"
+                    
+                    max_ah = abs(df_ahorros['Diferencia'].min()) if not df_ahorros.empty else 1
+                    if max_ah == 0: max_ah = 1
+                    
+                    max_des = df_desfases['Diferencia'].max() if not df_desfases.empty else 1
+                    if max_des == 0: max_des = 1
+                    
+                    # Generar Bloque Ahorros
+                    html_ah += "<div style='text-align: center; color: #002856; font-weight: 900; font-size: 0.95rem; margin-top: 5px; margin-bottom: 8px;'>Ahorros</div>"
+                    for _, row in df_ahorros.iterrows():
+                        val = row['Diferencia']
+                        width = (abs(val) / max_ah) * 100
+                        html_ah += f'''
+                        <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                            <div style="flex: 4; text-align: right; padding-right: 10px; font-size: 0.85rem; color: #002856; text-transform: uppercase;">{str(row[col_desc]).strip()}</div>
+                            <div style="flex: 1.5; text-align: right; padding-right: 10px; font-size: 0.85rem; font-weight: bold; color: #002856;">-${abs(val):,.0f}</div>
+                            <div style="flex: 3.5;">
+                                <div style="background-color: #087E78; height: 16px; width: {width}%;"></div>
+                            </div>
+                        </div>'''
+                    
+                    # Generar Bloque Desfases
+                    html_ah += "<div style='text-align: center; color: #002856; font-weight: 900; font-size: 0.95rem; margin-top: 15px; margin-bottom: 8px;'>Desfases</div>"
+                    for _, row in df_desfases.iterrows():
+                        val = row['Diferencia']
+                        width = (val / max_des) * 100
+                        html_ah += f'''
+                        <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                            <div style="flex: 4; text-align: right; padding-right: 10px; font-size: 0.85rem; color: #002856; text-transform: uppercase;">{str(row[col_desc]).strip()}</div>
+                            <div style="flex: 1.5; text-align: right; padding-right: 10px; font-size: 0.85rem; font-weight: bold; color: #002856;">${val:,.0f}</div>
+                            <div style="flex: 3.5;">
+                                <div style="background-color: #8CC63F; height: 16px; width: {width}%;"></div>
+                            </div>
+                        </div>'''
+                    
+                    html_ah += "</div>"
+                    st.markdown(html_ah, unsafe_allow_html=True)
+                    
+            with col_bot2:
+                # Espacio libre para futura gráfica "Costeo entre sucursales"
+                st.empty() 
+                
+            st.markdown("<hr style='margin-top: 20px; margin-bottom: 30px;'>", unsafe_allow_html=True)
 
         # ==========================================
         # FIRMA DEL AUDITOR Y BOTÓN DE IMPRIMIR
         # ==========================================
         st.markdown('<div class="salto-impresion"></div>', unsafe_allow_html=True)
-        st.markdown("---")
         st.markdown('<div class="subtitulo">📝 CIERRE Y FIRMA EN OBRA</div>', unsafe_allow_html=True)
         
         col_izq, col_der = st.columns([2, 1])
