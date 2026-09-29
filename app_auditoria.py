@@ -143,13 +143,13 @@ def extraer_ajuste_causas(file_causas):
 
 if uploaded_file is not None:
     try:
+        # CÁLCULOS INICIALES
         ajuste_ppto = 0.0
-        info_col_causas = ""
         if uploaded_causas is not None:
             try:
-                ajuste_ppto, info_col_causas = extraer_ajuste_causas(uploaded_causas)
-            except Exception as e:
-                st.sidebar.warning(f"Error leyendo Causas: {e}")
+                ajuste_ppto, _ = extraer_ajuste_causas(uploaded_causas)
+            except:
+                pass
 
         uploaded_file.seek(0)
         try:
@@ -222,7 +222,6 @@ if uploaded_file is not None:
         if not fila_cd.empty and c_aseg_v:
             tot_aseg = limpiar_numero(fila_cd.iloc[0][c_aseg_v])
 
-        # === APLICACIÓN DE AJUSTE Y CÁLCULOS ===
         tot_pres += ajuste_ppto
         por_consumir = tot_proy - tot_cons
         
@@ -233,7 +232,6 @@ if uploaded_file is not None:
 
         val_imprevistos = 0.0
         val_reajustes = 0.0
-        
         if c_proy_v:
             for idx, row in df.iterrows():
                 desc_val = str(row[col_desc]).strip().upper()
@@ -244,210 +242,66 @@ if uploaded_file is not None:
                         val_reajustes = limpiar_numero(row[c_proy_v])
 
         # ==========================================
-        # CONSTRUCCIÓN DEL BANNER HTML (Visible siempre arriba)
+        # RESERVAR ESPACIOS EN EL ORDEN CORRECTO
         # ==========================================
-        st.markdown(f"""
-        <div style="display: flex; width: 100%; gap: 15px; font-family: sans-serif; margin-bottom: 25px;">
-        <div style="display: flex; flex: 2.8; background-color: #9DBB61; padding: 15px; border-radius: 8px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1);">
-        <div style="flex: 1; text-align: center; border-right: 1px solid rgba(255,255,255,0.4); padding-right: 5px; display: flex; flex-direction: column; justify-content: center;">
-        <div style="color: black; font-weight: 800; font-size: 1rem; line-height: 1.2;">Vr. PPTO<br>+Adicionales</div>
-        <div style="color: white; font-weight: bold; font-size: 1.4rem; margin-top: 5px;">$ {(tot_pres/1000):,.0f}</div>
-        </div>
-        <div style="flex: 1; text-align: center; padding-left: 5px; display: flex; flex-direction: column; justify-content: center;">
-        <div style="color: black; font-weight: 800; font-size: 1rem; line-height: 1.2;"><br>Vr. Proyección</div>
-        <div style="color: white; font-weight: bold; font-size: 1.4rem; margin-top: 5px;">$ {(tot_proy/1000):,.0f}</div>
-        </div>
-        <div style="flex: 0.4; display: flex; align-items: center; justify-content: center; border-left: 4px solid white; margin-left: 15px; padding-left: 10px;">
-        <span style="color: black; font-weight: 900; font-size: 1.3rem;">{idx_proy:,.0f}%</span>
-        </div>
-        </div>
-        <div style="display: flex; flex-direction: column; flex: 4.2; gap: 8px;">
-        <div style="display: flex; gap: 8px; flex: 1;">
-        <div style="flex: 1; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
-        <div>
-        <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Consumido</div>
-        <div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {(tot_cons/1000):,.0f}</div>
-        </div>
-        <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_cons:.0f}%</div>
-        </div>
-        <div style="flex: 1; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
-        <div>
-        <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Asegurado</div>
-        <div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {(tot_aseg/1000):,.0f}</div>
-        </div>
-        <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_aseg:.0f}%</div>
-        </div>
-        </div>
-        <div style="display: flex; gap: 8px; flex: 1;">
-        <div style="flex: 1.2; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
-        <div>
-        <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Por consumir</div>
-        <div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {(por_consumir/1000):,.0f}</div>
-        </div>
-        <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_por_consumir:.0f}%</div>
-        </div>
-        <div style="flex: 0.9; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center;">
-        <div style="color: black; font-weight: 800; font-size: 0.9rem; text-align: center;">Imprevistos</div>
-        <div style="color: #333; font-weight: bold; text-align: center; margin-top: 3px;">$ {(val_imprevistos/1000):,.0f}</div>
-        </div>
-        <div style="flex: 0.9; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center;">
-        <div style="color: black; font-weight: 800; font-size: 0.9rem; text-align: center;">Reajustes</div>
-        <div style="color: #333; font-weight: bold; text-align: center; margin-top: 3px;">$ {(val_reajustes/1000):,.0f}</div>
-        </div>
-        </div>
-        </div>
-        <div style="display: flex; flex-direction: column; flex: 3; gap: 8px;">
-        <div style="display: flex; gap: 8px; flex: 1;">
-        <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
-        <div style="font-weight: 800; color: black; font-size: 0.85rem;">% avance real</div>
-        <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">""" + str(st.session_state.get('val_av_real', '0.0')) + """%</div>
-        </div>
-        <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
-        <div style="font-weight: 800; color: black; font-size: 0.85rem;">Días de atraso</div>
-        <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">""" + str(st.session_state.get('val_dias_atr', '0')) + """</div>
-        </div>
-        </div>
-        <div style="display: flex; gap: 8px; flex: 1;">
-        <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
-        <div style="font-weight: 800; color: black; font-size: 0.85rem;">% avance programado</div>
-        <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">""" + str(st.session_state.get('val_av_prog', '0.0')) + """%</div>
-        </div>
-        <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
-        <div style="font-weight: 800; color: black; font-size: 0.85rem;">Meses faltantes</div>
-        <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">""" + f"{st.session_state.get('meses_falt', 0.0):.1f}" + """</div>
-        </div>
-        </div>
-        </div>
-        </div>
-        """, unsafe_allow_html=True)
+        banner_container = st.container()
+        chart_historico_container = st.container()
 
         # ==========================================
-        # PREPARACIÓN DE DATOS HISTÓRICOS (Detección Automática)
+        # PREPARACIÓN DE DATOS (CAPÍTULOS E ÍTEMS) ¡RESTAURADO!
         # ==========================================
-        if 'hist_data' not in st.session_state or st.session_state.get('hist_project') != nombre_proyecto:
-            if '5183' in str(nombre_proyecto) and 'VIDA PARK' in str(nombre_proyecto).upper():
-                datos_por_defecto = pd.DataFrame({
-                    "Auditoría": ["Valor Ppto", "Aud Ago-25", "Aud Nov-25", "Aud Mar-26", "Aud Jun-26"],
-                    "Valor PPTO +Adicionales": [38412924281.0, 40037800036.0, 40105673096.0, 44831742490.0, 43792412209.0],
-                    "Valor proyección": [38412924281.0, 40140547915.0, 40047627996.0, 44685998777.0, 43452442156.0]
-                })
-            else:
-                datos_por_defecto = pd.DataFrame({
-                    "Auditoría": ["Valor Ppto"],
-                    "Valor PPTO +Adicionales": [float(tot_pres)],
-                    "Valor proyección": [float(tot_proy)]
-                })
-            st.session_state.hist_data = datos_por_defecto
-            st.session_state.hist_project = nombre_proyecto
-
-        df_chart = st.session_state.hist_data.copy()
-
-        # ==========================================
-        # CONSTRUCCIÓN DE GRÁFICAS DE HISTÓRICO (JUSTO DEBAJO DEL BANNER)
-        # ==========================================
-        st.markdown('<div class="salto-impresion"></div>', unsafe_allow_html=True)
-        col_g1, col_g2 = st.columns(2)
+        patron_capitulos = r'^\s*\d{1,2}\s*[-]'
+        es_capitulo = df[col_desc].astype(str).str.contains(patron_capitulos, regex=True, na=False)
+        es_total = df[col_desc].astype(str).str.upper().str.contains("TOTAL", na=False)
         
-        # Preparar datos base (dividiendo por 1000 para graficar)
-        df_chart['Valor PPTO +Adicionales'] = df_chart['Valor PPTO +Adicionales'] / 1000
-        df_chart['Valor proyección'] = df_chart['Valor proyección'] / 1000
-        
-        # --- GRÁFICA 1: Movimiento ---
-        with col_g1:
-            st.markdown('<div class="titulo-tabla" style="margin-top:0; color:#002856;">Movimiento proyecciones:</div>', unsafe_allow_html=True)
-            # Cambiamos "Métrica" por "Indicador" para evitar errores en JS
-            df_melt_hist = df_chart.melt(id_vars='Auditoría', value_vars=['Valor PPTO +Adicionales', 'Valor proyección'], var_name='Indicador', value_name='Valor')
-            
-            orden_x = list(df_chart['Auditoría'])
-            
-            base_line = alt.Chart(df_melt_hist).encode(
-                x=alt.X('Auditoría:N', sort=orden_x, title="", axis=alt.Axis(labelAngle=0, grid=False, domainOpacity=0)),
-                color=alt.Color('Indicador:N', scale=alt.Scale(domain=['Valor PPTO +Adicionales', 'Valor proyección'], range=['#2E86C1', '#8CC63F']), legend=alt.Legend(title="", orient="bottom"))
-            )
-            
-            lines = base_line.mark_line(point=alt.OverlayMarkDef(size=80, filled=True, opacity=1), strokeWidth=3).encode(
-                y=alt.Y('Valor:Q', title="", axis=alt.Axis(labels=False, ticks=False, grid=True, domainOpacity=0), scale=alt.Scale(zero=False))
-            )
-            
-            labels_proy = base_line.transform_filter(alt.datum.Indicador == 'Valor proyección').mark_text(
-                align='center', baseline='bottom', dy=-12, fontWeight='bold', fontSize=11, color='#8CC63F'
-            ).encode(
-                y=alt.Y('Valor:Q'), text=alt.Text('Valor:Q', format="$,.0f")
-            )
-            
-            labels_ppto = base_line.transform_filter(alt.datum.Indicador == 'Valor PPTO +Adicionales').mark_text(
-                align='center', baseline='top', dy=12, fontWeight='bold', fontSize=11, color='#2E86C1'
-            ).encode(
-                y=alt.Y('Valor:Q'), text=alt.Text('Valor:Q', format="$,.0f")
-            )
-            
-            chart1 = (lines + labels_proy + labels_ppto).properties(height=280).configure_view(strokeWidth=0)
-            st.altair_chart(chart1, use_container_width=True)
+        df_capitulos = df[es_capitulo & ~es_total].copy()
+        if df_capitulos.empty:
+            patron_capitulos_flexible = r'^\s*\d{1,2}\s+[A-Za-z]'
+            es_capitulo = df[col_desc].astype(str).str.contains(patron_capitulos_flexible, regex=True, na=False)
+            df_capitulos = df[es_capitulo & ~es_total].copy()
 
-        # --- GRÁFICA 2: Desviación (Híbrida: Barras + Línea) ---
-        with col_g2:
-            st.markdown('<div class="titulo-tabla" style="margin-top:0; color:#002856;">Desviación proyecciones:</div>', unsafe_allow_html=True)
-            
-            if len(df_chart) > 1:
-                # Renombramos a nombres simples para evitar el fallo de Vega-Lite
-                df_chart['Diferencia'] = df_chart['Valor proyección'].diff().fillna(0)
-                df_chart['Porcentaje'] = (df_chart['Diferencia'] / df_chart['Valor proyección'].shift(1)).fillna(0)
-                
-                data_chart2 = df_chart.iloc[1:].copy() 
-                orden_x2 = list(data_chart2['Auditoría'])
-                
-                base2 = alt.Chart(data_chart2).encode(
-                    x=alt.X('Auditoría:N', sort=orden_x2, title="", axis=alt.Axis(labelAngle=0, grid=False, domainOpacity=0))
-                )
-                
-                bar = base2.mark_bar(size=35, color='#8CC63F').encode(
-                    y=alt.Y('Diferencia:Q', title="", axis=alt.Axis(labels=False, ticks=False, grid=True, domainOpacity=0))
-                )
-                
-                text_bar_pos = base2.transform_filter(alt.datum.Diferencia >= 0).mark_text(
-                    align='center', baseline='bottom', dy=-15, fontWeight='bold', color='#002856', fontSize=11
-                ).encode(
-                    y=alt.Y('Diferencia:Q'), text=alt.Text('Diferencia:Q', format="$,.0f")
-                )
-                
-                text_bar_neg = base2.transform_filter(alt.datum.Diferencia < 0).mark_text(
-                    align='center', baseline='top', dy=15, fontWeight='bold', color='#002856', fontSize=11
-                ).encode(
-                    y=alt.Y('Diferencia:Q'), text=alt.Text('Diferencia:Q', format="$,.0f")
-                )
-                
-                line2 = base2.mark_line(color='#B5C689', strokeWidth=3, point=alt.OverlayMarkDef(color='#B5C689', size=80, filled=True, opacity=1)).encode(
-                    y=alt.Y('Porcentaje:Q', title="", axis=alt.Axis(labels=False, ticks=False, grid=False, domainOpacity=0))
-                )
-                
-                text_line_pos = base2.transform_filter(alt.datum.Porcentaje >= 0).mark_text(
-                    align='center', baseline='top', dy=15, fontWeight='bold', color='#002856', fontSize=11
-                ).encode(
-                    y=alt.Y('Porcentaje:Q'), text=alt.Text('Porcentaje:Q', format=".1%")
-                )
-                
-                text_line_neg = base2.transform_filter(alt.datum.Porcentaje < 0).mark_text(
-                    align='center', baseline='bottom', dy=-15, fontWeight='bold', color='#002856', fontSize=11
-                ).encode(
-                    y=alt.Y('Porcentaje:Q'), text=alt.Text('Porcentaje:Q', format=".1%")
-                )
-                
-                chart2 = alt.layer(bar + text_bar_pos + text_bar_neg, line2 + text_line_pos + text_line_neg).resolve_scale(y='independent').properties(height=280).configure_view(strokeWidth=0)
-                st.altair_chart(chart2, use_container_width=True)
-            else:
-                st.info("Agrega más de una auditoría en la Hoja 4 para ver la gráfica de desviación.")
-        
-        st.markdown("<hr style='margin-top: 5px; margin-bottom: 30px;'>", unsafe_allow_html=True)
+        df_items = df[(~es_capitulo) & (~es_total) & (df[col_desc].str.strip() != "")].copy()
+        if c_pres_v and c_proy_v:
+            df_items = df_items[(df_items[c_pres_v] > 0) | (df_items[c_proy_v] > 0)]
+
+        for c in cols_num:
+            if not df_capitulos.empty: df_capitulos[c] = df_capitulos[c] / 1000.0
+            if not df_items.empty: df_items[c] = df_items[c] / 1000.0
+
+        def generar_tablas(df_datos, key_prefix):
+            if c_pres_v and c_proy_v:
+                df_datos['VAR_PPTO_%'] = np.where(df_datos[c_pres_v] > 0, ((df_datos[c_proy_v] - df_datos[c_pres_v]) / df_datos[c_pres_v]) * 100, 0.0)
+            else: df_datos['VAR_PPTO_%'] = 0.0
+
+            if c_proy_v and c_aseg_v:
+                df_datos['VAR_ASEG_%'] = np.where(df_datos[c_proy_v] > 0, ((df_datos[c_aseg_v] - df_datos[c_proy_v]) / df_datos[c_proy_v]) * 100, 0.0)
+            else: df_datos['VAR_ASEG_%'] = 0.0
+
+            df_datos['Observaciones'] = ""
+            altura_dinamica = max((len(df_datos) * 38) + 45, 150) 
+
+            st.markdown('<div class="titulo-tabla">1. PROYECTADO VS PRESUPUESTADO</div>', unsafe_allow_html=True)
+            df_t1 = df_datos[[col_desc, c_pres_v, c_proy_v, 'VAR_PPTO_%', 'Observaciones']].copy() if c_pres_v and c_proy_v else pd.DataFrame()
+            if not df_t1.empty:
+                df_t1.columns = ['Descripción', 'Presupuestado', 'Proyectado', 'Diferencia (%)', 'Observaciones']
+                st.data_editor(df_t1, column_config={"Presupuestado": st.column_config.NumberColumn(format="$ %,.0f"), "Proyectado": st.column_config.NumberColumn(format="$ %,.0f"), "Diferencia (%)": st.column_config.NumberColumn(format="%.1f %%"), "Observaciones": st.column_config.TextColumn()}, use_container_width=True, hide_index=True, height=altura_dinamica, key=f"{key_prefix}_1")
+
+            st.markdown('<br>', unsafe_allow_html=True) 
+            st.markdown('<div class="titulo-tabla">2. ASEGURADO VS PROYECTADO</div>', unsafe_allow_html=True)
+            df_t2 = df_datos[[col_desc, c_proy_v, c_aseg_v, 'VAR_ASEG_%', 'Observaciones']].copy() if c_proy_v and c_aseg_v else pd.DataFrame()
+            if not df_t2.empty:
+                df_t2.columns = ['Descripción', 'Proyectado', 'Asegurado', 'Diferencia (%)', 'Observaciones']
+                st.data_editor(df_t2, column_config={"Proyectado": st.column_config.NumberColumn(format="$ %,.0f"), "Asegurado": st.column_config.NumberColumn(format="$ %,.0f"), "Diferencia (%)": st.column_config.NumberColumn(format="%.1f %%"), "Observaciones": st.column_config.TextColumn()}, use_container_width=True, hide_index=True, height=altura_dinamica, key=f"{key_prefix}_2")
 
 
         # ==========================================
-        # INTERFAZ DE PESTAÑAS (4 HOJAS)
+        # INTERFAZ DE PESTAÑAS
         # ==========================================
         tab_capitulos, tab_items, tab_prog, tab_hist = st.tabs(["📑 Hoja 1: Resumen Capítulos", "🗂️ Hoja 2: Detalle Ítems", "🗓️ Hoja 3: Programación", "📈 Hoja 4: Histórico"])
 
         with tab_prog:
             st.markdown('<div class="subtitulo">🗓️ % Programa Vs % Consumido</div>', unsafe_allow_html=True)
-            st.info("Digita las fechas y porcentajes aquí. Para ver los cambios reflejados en el banner superior de forma inmediata, interactúa con los campos.")
+            st.info("Digita las fechas y porcentajes. Se actualizarán inmediatamente en el banner superior.")
             
             c1, c2, c3 = st.columns(3)
             val_f_inicio = c1.date_input("Fecha inicio", value=None)
@@ -464,8 +318,6 @@ if uploaded_file is not None:
                 meses_ejec = (val_f_auditoria - val_f_inicio).days / 30.0
             meses_falt = meses_tot - meses_ejec
 
-            st.session_state['meses_falt'] = meses_falt
-
             st.markdown(f"""
             <div style="background-color: #E2EFD9; padding: 15px; border-radius: 5px; text-align: center; color: black; font-weight: bold; margin-bottom: 20px;">
                 Meses de ejecución total: <span style="color: #257A72; font-size: 1.2rem;">{meses_tot:.1f}</span> &nbsp; | &nbsp; 
@@ -475,16 +327,32 @@ if uploaded_file is not None:
             """, unsafe_allow_html=True)
 
             c4, c5, c6 = st.columns(3)
-            st.session_state['val_av_real'] = c4.number_input("% avance real", value=0.0, step=0.1, format="%.1f")
-            st.session_state['val_av_prog'] = c5.number_input("% avance programado", value=0.0, step=0.1, format="%.1f")
-            st.session_state['val_dias_atr'] = c6.number_input("Días de atraso", value=0, step=1)
+            val_av_real = c4.number_input("% avance real", value=0.0, step=0.1, format="%.1f")
+            val_av_prog = c5.number_input("% avance programado", value=0.0, step=0.1, format="%.1f")
+            val_dias_atr = c6.number_input("Días de atraso", value=0, step=1)
 
         with tab_hist:
             st.markdown('<div class="subtitulo">📝 Digitación del Histórico de Proyecciones</div>', unsafe_allow_html=True)
-            st.info("Sube el archivo de Excel con el histórico, o digítalo manualmente. El sistema actualizará las gráficas superiores al instante.")
+            st.info("Sube el archivo de Excel con el histórico o digítalo manualmente en la tabla.")
             
-            uploaded_hist = st.file_uploader("📥 Subir archivo de Histórico de Desviación (Opcional)", type=['xls', 'xlsx', 'csv'], key='hist_uploader')
+            uploaded_hist = st.file_uploader("📥 Subir archivo de Histórico (Opcional)", type=['xls', 'xlsx', 'csv'], key='hist_uploader')
             
+            if 'hist_data' not in st.session_state or st.session_state.get('hist_project') != nombre_proyecto:
+                if '5183' in str(nombre_proyecto) and 'VIDA PARK' in str(nombre_proyecto).upper():
+                    datos_por_defecto = pd.DataFrame({
+                        "Auditoría": ["Valor Ppto", "Aud Ago-25", "Aud Nov-25", "Aud Mar-26", "Aud Jun-26"],
+                        "Valor PPTO +Adicionales": [38412924281.0, 40037800036.0, 40105673096.0, 44831742490.0, 43792412209.0],
+                        "Valor proyección": [38412924281.0, 40140547915.0, 40047627996.0, 44685998777.0, 43452442156.0]
+                    })
+                else:
+                    datos_por_defecto = pd.DataFrame({
+                        "Auditoría": ["Valor Ppto"],
+                        "Valor PPTO +Adicionales": [float(tot_pres)],
+                        "Valor proyección": [float(tot_proy)]
+                    })
+                st.session_state.hist_data = datos_por_defecto
+                st.session_state.hist_project = nombre_proyecto
+
             if uploaded_hist is not None and st.session_state.get('last_uploaded_hist') != uploaded_hist.name:
                 try:
                     if uploaded_hist.name.endswith('csv'):
@@ -496,32 +364,29 @@ if uploaded_file is not None:
                     if all(c in df_up.columns for c in cols_needed):
                         st.session_state.hist_data = df_up[cols_needed].copy()
                         st.session_state.last_uploaded_hist = uploaded_hist.name
-                        st.rerun() # Fuerza a recargar para mostrar los datos en la tabla y gráfica
                     else:
-                        st.warning("El archivo no contiene las columnas requeridas: 'Auditoría', 'Valor PPTO +Adicionales', 'Valor proyección'.")
+                        st.warning("El archivo no contiene las columnas requeridas.")
                 except Exception as e:
                     st.error(f"Error procesando archivo histórico: {e}")
 
+            # CORRECCIÓN BUG validateInput: Se quita format="$ %d" para que el usuario pueda digitar libremente
             hist_editado = st.data_editor(
                 st.session_state.hist_data,
                 num_rows="dynamic",
                 column_config={
                     "Auditoría": st.column_config.TextColumn(required=True),
-                    "Valor PPTO +Adicionales": st.column_config.NumberColumn(format="$ %,.0f", required=True),
-                    "Valor proyección": st.column_config.NumberColumn(format="$ %,.0f", required=True)
+                    "Valor PPTO +Adicionales": st.column_config.NumberColumn(step=1),
+                    "Valor proyección": st.column_config.NumberColumn(step=1)
                 },
                 use_container_width=True,
                 key="hist_editor_table"
             )
             
-            # Guardamos los cambios hechos por el usuario
-            st.session_state.hist_data = hist_editado
-            
             df_mostrar = hist_editado.copy()
             df_mostrar['Diferencia ($)'] = df_mostrar['Valor proyección'].diff().fillna(0)
             df_mostrar['%'] = (df_mostrar['Diferencia ($)'] / df_mostrar['Valor proyección'].shift(1)).fillna(0) * 100
             
-            st.markdown("**Vista Previa Numérica:**")
+            st.markdown("**Vista Previa Numérica (Calculada Automáticamente):**")
             st.dataframe(
                 df_mostrar,
                 column_config={
@@ -619,6 +484,179 @@ if uploaded_file is not None:
                 generar_tablas(df_items, "items")
 
         # ==========================================
+        # LLENADO DEL BANNER (Con datos actualizados en tiempo real)
+        # ==========================================
+        with banner_container:
+            html_banner = f"""
+            <div style="display: flex; width: 100%; gap: 15px; font-family: sans-serif; margin-bottom: 25px;">
+            <div style="display: flex; flex: 2.8; background-color: #9DBB61; padding: 15px; border-radius: 8px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1);">
+            <div style="flex: 1; text-align: center; border-right: 1px solid rgba(255,255,255,0.4); padding-right: 5px; display: flex; flex-direction: column; justify-content: center;">
+            <div style="color: black; font-weight: 800; font-size: 1rem; line-height: 1.2;">Vr. PPTO<br>+Adicionales</div>
+            <div style="color: white; font-weight: bold; font-size: 1.4rem; margin-top: 5px;">$ {(tot_pres/1000):,.0f}</div>
+            </div>
+            <div style="flex: 1; text-align: center; padding-left: 5px; display: flex; flex-direction: column; justify-content: center;">
+            <div style="color: black; font-weight: 800; font-size: 1rem; line-height: 1.2;"><br>Vr. Proyección</div>
+            <div style="color: white; font-weight: bold; font-size: 1.4rem; margin-top: 5px;">$ {(tot_proy/1000):,.0f}</div>
+            </div>
+            <div style="flex: 0.4; display: flex; align-items: center; justify-content: center; border-left: 4px solid white; margin-left: 15px; padding-left: 10px;">
+            <span style="color: black; font-weight: 900; font-size: 1.3rem;">{idx_proy:,.0f}%</span>
+            </div>
+            </div>
+            <div style="display: flex; flex-direction: column; flex: 4.2; gap: 8px;">
+            <div style="display: flex; gap: 8px; flex: 1;">
+            <div style="flex: 1; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+            <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Consumido</div>
+            <div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {(tot_cons/1000):,.0f}</div>
+            </div>
+            <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_cons:.0f}%</div>
+            </div>
+            <div style="flex: 1; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+            <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Asegurado</div>
+            <div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {(tot_aseg/1000):,.0f}</div>
+            </div>
+            <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_aseg:.0f}%</div>
+            </div>
+            </div>
+            <div style="display: flex; gap: 8px; flex: 1;">
+            <div style="flex: 1.2; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+            <div style="color: black; font-weight: 800; font-size: 0.95rem;">Vr. Por consumir</div>
+            <div style="font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 3px;">$ {(por_consumir/1000):,.0f}</div>
+            </div>
+            <div style="font-size: 1.2rem; color: #555; font-weight: bold;">{pct_por_consumir:.0f}%</div>
+            </div>
+            <div style="flex: 0.9; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center;">
+            <div style="color: black; font-weight: 800; font-size: 0.9rem; text-align: center;">Imprevistos</div>
+            <div style="color: #333; font-weight: bold; text-align: center; margin-top: 3px;">$ {(val_imprevistos/1000):,.0f}</div>
+            </div>
+            <div style="flex: 0.9; background-color: #E2EFD9; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center;">
+            <div style="color: black; font-weight: 800; font-size: 0.9rem; text-align: center;">Reajustes</div>
+            <div style="color: #333; font-weight: bold; text-align: center; margin-top: 3px;">$ {(val_reajustes/1000):,.0f}</div>
+            </div>
+            </div>
+            </div>
+            <div style="display: flex; flex-direction: column; flex: 3; gap: 8px;">
+            <div style="display: flex; gap: 8px; flex: 1;">
+            <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+            <div style="font-weight: 800; color: black; font-size: 0.85rem;">% avance real</div>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_av_real}%</div>
+            </div>
+            <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+            <div style="font-weight: 800; color: black; font-size: 0.85rem;">Días de atraso</div>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_dias_atr}</div>
+            </div>
+            </div>
+            <div style="display: flex; gap: 8px; flex: 1;">
+            <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+            <div style="font-weight: 800; color: black; font-size: 0.85rem;">% avance programado</div>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{val_av_prog}%</div>
+            </div>
+            <div style="flex: 1; background-color: #257A72; color: white; padding: 10px; border-radius: 5px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+            <div style="font-weight: 800; color: black; font-size: 0.85rem;">Meses faltantes</div>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-top: 3px;">{meses_falt:.1f}</div>
+            </div>
+            </div>
+            </div>
+            </div>
+            """
+            st.markdown(html_banner, unsafe_allow_html=True)
+
+        # ==========================================
+        # LLENADO DE GRÁFICAS HISTÓRICAS (Con datos actualizados en tiempo real)
+        # ==========================================
+        with chart_historico_container:
+            col_g1, col_g2 = st.columns(2)
+            
+            df_chart = hist_editado.copy()
+            df_chart['Valor PPTO +Adicionales'] = df_chart['Valor PPTO +Adicionales'] / 1000
+            df_chart['Valor proyección'] = df_chart['Valor proyección'] / 1000
+            
+            with col_g1:
+                st.markdown('<div class="titulo-tabla" style="margin-top:0; color:#002856;">Movimiento proyecciones:</div>', unsafe_allow_html=True)
+                df_melt_hist = df_chart.melt(id_vars='Auditoría', value_vars=['Valor PPTO +Adicionales', 'Valor proyección'], var_name='Indicador', value_name='Valor')
+                
+                orden_x = list(df_chart['Auditoría'])
+                base_line = alt.Chart(df_melt_hist).encode(
+                    x=alt.X('Auditoría:N', sort=orden_x, title="", axis=alt.Axis(labelAngle=0, grid=False, domainOpacity=0)),
+                    color=alt.Color('Indicador:N', scale=alt.Scale(domain=['Valor PPTO +Adicionales', 'Valor proyección'], range=['#2E86C1', '#8CC63F']), legend=alt.Legend(title="", orient="bottom"))
+                )
+                
+                lines = base_line.mark_line(point=alt.OverlayMarkDef(size=80, filled=True, opacity=1), strokeWidth=3).encode(
+                    y=alt.Y('Valor:Q', title="", axis=alt.Axis(labels=False, ticks=False, grid=True, domainOpacity=0), scale=alt.Scale(zero=False))
+                )
+                
+                labels_proy = base_line.transform_filter(alt.datum.Indicador == 'Valor proyección').mark_text(
+                    align='center', baseline='bottom', dy=-12, fontWeight='bold', fontSize=11, color='#8CC63F'
+                ).encode(
+                    y=alt.Y('Valor:Q'), text=alt.Text('Valor:Q', format="$,.0f")
+                )
+                
+                labels_ppto = base_line.transform_filter(alt.datum.Indicador == 'Valor PPTO +Adicionales').mark_text(
+                    align='center', baseline='top', dy=12, fontWeight='bold', fontSize=11, color='#2E86C1'
+                ).encode(
+                    y=alt.Y('Valor:Q'), text=alt.Text('Valor:Q', format="$,.0f")
+                )
+                
+                chart1 = (lines + labels_proy + labels_ppto).properties(height=280).configure_view(strokeWidth=0)
+                st.altair_chart(chart1, use_container_width=True)
+
+            with col_g2:
+                st.markdown('<div class="titulo-tabla" style="margin-top:0; color:#002856;">Desviación proyecciones:</div>', unsafe_allow_html=True)
+                
+                if len(df_chart) > 1:
+                    df_chart['Diferencia'] = df_chart['Valor proyección'].diff().fillna(0)
+                    df_chart['Porcentaje'] = (df_chart['Diferencia'] / df_chart['Valor proyección'].shift(1)).fillna(0)
+                    
+                    data_chart2 = df_chart.iloc[1:].copy() 
+                    orden_x2 = list(data_chart2['Auditoría'])
+                    
+                    base2 = alt.Chart(data_chart2).encode(
+                        x=alt.X('Auditoría:N', sort=orden_x2, title="", axis=alt.Axis(labelAngle=0, grid=False, domainOpacity=0))
+                    )
+                    
+                    bar = base2.mark_bar(size=35, color='#8CC63F').encode(
+                        y=alt.Y('Diferencia:Q', title="", axis=alt.Axis(labels=False, ticks=False, grid=True, domainOpacity=0))
+                    )
+                    
+                    text_bar_pos = base2.transform_filter(alt.datum.Diferencia >= 0).mark_text(
+                        align='center', baseline='bottom', dy=-15, fontWeight='bold', color='#002856', fontSize=11
+                    ).encode(
+                        y=alt.Y('Diferencia:Q'), text=alt.Text('Diferencia:Q', format="$,.0f")
+                    )
+                    
+                    text_bar_neg = base2.transform_filter(alt.datum.Diferencia < 0).mark_text(
+                        align='center', baseline='top', dy=15, fontWeight='bold', color='#002856', fontSize=11
+                    ).encode(
+                        y=alt.Y('Diferencia:Q'), text=alt.Text('Diferencia:Q', format="$,.0f")
+                    )
+                    
+                    line2 = base2.mark_line(color='#B5C689', strokeWidth=3, point=alt.OverlayMarkDef(color='#B5C689', size=80, filled=True, opacity=1)).encode(
+                        y=alt.Y('Porcentaje:Q', title="", axis=alt.Axis(labels=False, ticks=False, grid=False, domainOpacity=0))
+                    )
+                    
+                    text_line_pos = base2.transform_filter(alt.datum.Porcentaje >= 0).mark_text(
+                        align='center', baseline='top', dy=15, fontWeight='bold', color='#002856', fontSize=11
+                    ).encode(
+                        y=alt.Y('Porcentaje:Q'), text=alt.Text('Porcentaje:Q', format=".1%")
+                    )
+                    
+                    text_line_neg = base2.transform_filter(alt.datum.Porcentaje < 0).mark_text(
+                        align='center', baseline='bottom', dy=-15, fontWeight='bold', color='#002856', fontSize=11
+                    ).encode(
+                        y=alt.Y('Porcentaje:Q'), text=alt.Text('Porcentaje:Q', format=".1%")
+                    )
+                    
+                    chart2 = alt.layer(bar + text_bar_pos + text_bar_neg, line2 + text_line_pos + text_line_neg).resolve_scale(y='independent').properties(height=280).configure_view(strokeWidth=0)
+                    st.altair_chart(chart2, use_container_width=True)
+                else:
+                    st.info("Agrega más de una auditoría en la Hoja 4 para ver la gráfica de desviación.")
+        
+            st.markdown("<hr style='margin-top: 5px; margin-bottom: 30px;'>", unsafe_allow_html=True)
+
+
+        # ==========================================
         # FIRMA DEL AUDITOR Y BOTÓN DE IMPRIMIR
         # ==========================================
         st.markdown('<div class="salto-impresion"></div>', unsafe_allow_html=True)
@@ -665,6 +703,7 @@ if uploaded_file is not None:
             )
 
     except Exception as e:
+        import traceback
         st.error(f"Error procesando el archivo: {e}")
 else:
     st.markdown("""
