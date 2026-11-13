@@ -83,17 +83,14 @@ def limpiar_numero(valor):
     if isinstance(valor, (int, float)): return float(valor)
     val_str = str(valor).replace('$', '').replace(' ', '').strip()
     if not val_str: return 0.0
-    val_str = val_str.replace(',', '')
-    if val_str.startswith('(') and val_str.endswith(')'):
-        val_str = '-' + val_str[1:-1]
+    val_str = val_str.replace(',', '') 
     try: return float(val_str)
     except: return 0.0
 
 def extraer_ajuste_causas(file_causas):
     file_causas.seek(0)
     try:
-        content = file_causas.getvalue()
-        dfs = pd.read_html(content)
+        dfs = pd.read_html(file_causas)
         df_c = dfs[0]
     except:
         file_causas.seek(0)
@@ -146,9 +143,28 @@ def extraer_ajuste_causas(file_causas):
         
     return 0.0, most_recent_col
 
+def extraer_total_sucursal(file_suc):
+    file_suc.seek(0)
+    try:
+        dfs = pd.read_html(file_suc)
+        df_suc = dfs[0]
+    except:
+        file_suc.seek(0)
+        df_suc = pd.read_excel(file_suc, engine='openpyxl' if file_suc.name.endswith('xlsx') else None)
+        
+    first_val = str(df_suc.iloc[0, 0]).upper()
+    totales_row = df_suc[df_suc.iloc[:, 0].astype(str).str.contains('Totales', case=False, na=False)]
+    
+    total_val = 0.0
+    if not totales_row.empty:
+        try:
+            total_val = limpiar_numero(totales_row.iloc[0, 6])
+        except:
+            pass
+    return first_val, total_val
+
 if uploaded_file is not None:
     try:
-        # CÁLCULOS CAUSAS
         ajuste_ppto = 0.0
         info_col_causas = ""
         if uploaded_causas is not None:
@@ -157,7 +173,7 @@ if uploaded_file is not None:
             except Exception as e:
                 st.sidebar.warning(f"Error leyendo Causas: {e}")
                 
-        # CÁLCULOS SUCURSALES (Blindado con lectura de bytes crudos)
+        # VARIABLES COSTEO SUCURSALES
         val_concretos_suc = 0.0
         val_concretos_ctrl = 0.0
         val_electrica_suc = 0.0
@@ -166,39 +182,20 @@ if uploaded_file is not None:
         if uploaded_sucursales:
             for f in uploaded_sucursales:
                 try:
-                    f.seek(0)
-                    content = f.getvalue()
-                    texto_busqueda = content.decode('utf-8', errors='ignore').upper()
-                    
-                    try:
-                        dfs = pd.read_html(content)
-                        df_suc = dfs[0]
-                    except:
-                        f.seek(0)
-                        df_suc = pd.read_excel(f, engine='openpyxl' if f.name.endswith('xlsx') else None)
-                        texto_busqueda = " ".join(df_suc.head(20).astype(str).values.flatten()).upper()
-                    
-                    totales_row = df_suc[df_suc.iloc[:, 0].astype(str).str.contains('Totales', case=False, na=False)]
-                    
-                    if not totales_row.empty:
-                        # Extrae el último valor de la columna 6 (Suele ser Neto o Valor Pago en ADPRO)
-                        total_val = limpiar_numero(totales_row.iloc[-1, 6])
-                        
-                        if '51390140' in texto_busqueda: val_concretos_ctrl = total_val
-                        elif '53740007' in texto_busqueda: val_concretos_suc = total_val
-                        elif '51390084' in texto_busqueda: val_electrica_ctrl = total_val
-                        elif '53660006' in texto_busqueda: val_electrica_suc = total_val
-                except Exception as e:
-                    st.sidebar.warning(f"Error leyendo archivo de sucursal {f.name}: {e}")
+                    first_val, total_val = extraer_total_sucursal(f)
+                    if '51390140' in first_val: val_concretos_ctrl = total_val
+                    elif '53740007' in first_val: val_concretos_suc = total_val
+                    elif '51390084' in first_val: val_electrica_ctrl = total_val
+                    elif '53660006' in first_val: val_electrica_suc = total_val
+                except:
+                    pass
                     
         dif_concretos = val_concretos_ctrl + val_concretos_suc
         dif_electrica = val_electrica_ctrl + val_electrica_suc
 
-        # CÁLCULOS ARCHIVO PRINCIPAL
         uploaded_file.seek(0)
         try:
-            content_main = uploaded_file.getvalue()
-            dfs = pd.read_html(content_main)
+            dfs = pd.read_html(uploaded_file)
             df = dfs[0]
             clean_cols = []
             for col in df.columns:
@@ -613,7 +610,7 @@ if uploaded_file is not None:
             st.markdown(html_banner, unsafe_allow_html=True)
 
         # ==========================================
-        # LLENADO DE GRÁFICAS HISTÓRICAS Y SECCIÓN TRIPLE
+        # LLENADO DE GRÁFICAS HISTÓRICAS
         # ==========================================
         with chart_historico_container:
             st.markdown('<div class="salto-impresion"></div>', unsafe_allow_html=True)
