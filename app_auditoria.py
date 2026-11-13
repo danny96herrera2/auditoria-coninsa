@@ -568,7 +568,7 @@ if uploaded_file is not None:
             st.markdown(html_banner, unsafe_allow_html=True)
 
         # ==========================================
-        # LLENADO DE GRÁFICAS HISTÓRICAS Y TOP AHORROS/DESFASES/POR CONSUMIR
+        # LLENADO DE GRÁFICAS HISTÓRICAS Y TOP AHORROS/DESFASES
         # ==========================================
         with chart_historico_container:
             st.markdown('<div class="salto-impresion"></div>', unsafe_allow_html=True)
@@ -684,43 +684,34 @@ if uploaded_file is not None:
                     for _, row in df_ahorros.iterrows():
                         val = row['Diferencia']
                         width = (abs(val) / max_ah) * 100
-                        html_ah += f'''
-                        <div style="display: flex; align-items: center; margin-bottom: 4px;">
-                            <div style="flex: 4; text-align: right; padding-right: 10px; font-size: 0.85rem; color: #002856; text-transform: uppercase;">{str(row[col_desc]).strip()}</div>
-                            <div style="flex: 1.5; text-align: right; padding-right: 10px; font-size: 0.85rem; font-weight: bold; color: #002856;">-${abs(val):,.0f}</div>
-                            <div style="flex: 3.5;">
-                                <div style="background-color: #087E78; height: 16px; width: {width}%;"></div>
-                            </div>
-                        </div>'''
+                        html_ah += f'''<div style="display: flex; align-items: center; margin-bottom: 4px;">
+<div style="flex: 4; text-align: right; padding-right: 10px; font-size: 0.85rem; color: #002856; text-transform: uppercase;">{str(row[col_desc]).strip()}</div>
+<div style="flex: 1.5; text-align: right; padding-right: 10px; font-size: 0.85rem; font-weight: bold; color: #002856;">-${abs(val):,.0f}</div>
+<div style="flex: 3.5;">
+<div style="background-color: #087E78; height: 16px; width: {width}%;"></div>
+</div>
+</div>'''
                     
                     html_ah += "<div style='text-align: center; color: #002856; font-weight: 900; font-size: 0.95rem; margin-top: 15px; margin-bottom: 8px;'>Desfases</div>"
                     for _, row in df_desfases.iterrows():
                         val = row['Diferencia']
                         width = (val / max_des) * 100
-                        html_ah += f'''
-                        <div style="display: flex; align-items: center; margin-bottom: 4px;">
-                            <div style="flex: 4; text-align: right; padding-right: 10px; font-size: 0.85rem; color: #002856; text-transform: uppercase;">{str(row[col_desc]).strip()}</div>
-                            <div style="flex: 1.5; text-align: right; padding-right: 10px; font-size: 0.85rem; font-weight: bold; color: #002856;">${val:,.0f}</div>
-                            <div style="flex: 3.5;">
-                                <div style="background-color: #8CC63F; height: 16px; width: {width}%;"></div>
-                            </div>
-                        </div>'''
+                        html_ah += f'''<div style="display: flex; align-items: center; margin-bottom: 4px;">
+<div style="flex: 4; text-align: right; padding-right: 10px; font-size: 0.85rem; color: #002856; text-transform: uppercase;">{str(row[col_desc]).strip()}</div>
+<div style="flex: 1.5; text-align: right; padding-right: 10px; font-size: 0.85rem; font-weight: bold; color: #002856;">${val:,.0f}</div>
+<div style="flex: 3.5;">
+<div style="background-color: #8CC63F; height: 16px; width: {width}%;"></div>
+</div>
+</div>'''
                     
                     html_ah += "</div>"
                     st.markdown(html_ah, unsafe_allow_html=True)
                     
             with col_bot2:
-                # --- NUEVO: CAPÍTULOS POR CONSUMIR - MAYOR VALOR ---
                 if c_proy_v and c_cons_v and not df_capitulos.empty:
                     df_por_cons = df_capitulos[[col_desc, c_proy_v, c_cons_v]].copy()
-                    
-                    # Filtro de exclusión estricto para Capítulo 39
                     df_por_cons = df_por_cons[~df_por_cons[col_desc].astype(str).str.strip().str.startswith('39')]
-                    
-                    # Cálculo: Proyectado - Consumido
                     df_por_cons['Por_Consumir'] = df_por_cons[c_proy_v] - df_por_cons[c_cons_v]
-                    
-                    # Top 4 de Mayor a Menor
                     df_top4_cons = df_por_cons.sort_values(by='Por_Consumir', ascending=False).head(4)
                     
                     html_pc = "<div style='font-family: sans-serif;'>"
@@ -734,17 +725,15 @@ if uploaded_file is not None:
                         width = (val / max_pc) * 100 if val > 0 else 0
                         desc_limpio = str(row[col_desc]).strip().upper()
                         
-                        html_pc += f'''
-                        <div style="margin-bottom: 12px;">
-                            <div style="text-align: center; font-size: 0.9rem; font-weight: bold; color: #002856; margin-bottom: 2px;">{desc_limpio}</div>
-                            <div style="display: flex; align-items: center;">
-                                <div style="flex: 1; text-align: right; padding-right: 10px; font-size: 0.95rem; font-weight: 600; color: #002856;">${val:,.0f}</div>
-                                <div style="flex: 2;">
-                                    <div style="background-color: #DDE5B6; height: 18px; width: {width}%;"></div>
-                                </div>
-                            </div>
-                        </div>
-                        '''
+                        html_pc += f'''<div style="margin-bottom: 12px;">
+<div style="text-align: center; font-size: 0.9rem; font-weight: bold; color: #002856; margin-bottom: 2px;">{desc_limpio}</div>
+<div style="display: flex; align-items: center;">
+<div style="flex: 1; text-align: right; padding-right: 10px; font-size: 0.95rem; font-weight: 600; color: #002856;">${val:,.0f}</div>
+<div style="flex: 2;">
+<div style="background-color: #DDE5B6; height: 18px; width: {width}%;"></div>
+</div>
+</div>
+</div>'''
                     html_pc += "</div>"
                     st.markdown(html_pc, unsafe_allow_html=True)
                 
