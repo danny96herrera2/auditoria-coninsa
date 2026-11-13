@@ -75,6 +75,8 @@ st.sidebar.markdown("<h2 style='color: #002856; text-align: center;'>Panel de Co
 uploaded_file = st.sidebar.file_uploader("1. Archivo PRINCIPAL (.xls / .xlsx)", type=['xls', 'xlsx'])
 st.sidebar.markdown("---")
 uploaded_causas = st.sidebar.file_uploader("2. Archivo CAUSAS (Opcional)", type=['xls', 'xlsx'], help="Sube el archivo de Causas para sumar el ajuste de BASE PPTO.")
+st.sidebar.markdown("---")
+uploaded_sucursales = st.sidebar.file_uploader("3. Costeo Sucursales (Múltiple)", type=['xls', 'xlsx'], accept_multiple_files=True, help="Sube los informes de relación de pagos (Ej: 5139, 5374, 5366) para cruzar saldos automáticamente.")
 
 def limpiar_numero(valor):
     if pd.isna(valor): return 0.0
@@ -141,6 +143,26 @@ def extraer_ajuste_causas(file_causas):
         
     return 0.0, most_recent_col
 
+def extraer_total_sucursal(file_suc):
+    file_suc.seek(0)
+    try:
+        dfs = pd.read_html(file_suc)
+        df_suc = dfs[0]
+    except:
+        file_suc.seek(0)
+        df_suc = pd.read_excel(file_suc, engine='openpyxl' if file_suc.name.endswith('xlsx') else None)
+        
+    first_val = str(df_suc.iloc[0, 0]).upper()
+    totales_row = df_suc[df_suc.iloc[:, 0].astype(str).str.contains('Totales', case=False, na=False)]
+    
+    total_val = 0.0
+    if not totales_row.empty:
+        try:
+            total_val = limpiar_numero(totales_row.iloc[0, 6])
+        except:
+            pass
+    return first_val, total_val
+
 if uploaded_file is not None:
     try:
         ajuste_ppto = 0.0
@@ -150,6 +172,26 @@ if uploaded_file is not None:
                 ajuste_ppto, info_col_causas = extraer_ajuste_causas(uploaded_causas)
             except Exception as e:
                 st.sidebar.warning(f"Error leyendo Causas: {e}")
+                
+        # VARIABLES COSTEO SUCURSALES
+        val_concretos_suc = 0.0
+        val_concretos_ctrl = 0.0
+        val_electrica_suc = 0.0
+        val_electrica_ctrl = 0.0
+        
+        if uploaded_sucursales:
+            for f in uploaded_sucursales:
+                try:
+                    first_val, total_val = extraer_total_sucursal(f)
+                    if '51390140' in first_val: val_concretos_ctrl = total_val
+                    elif '53740007' in first_val: val_concretos_suc = total_val
+                    elif '51390084' in first_val: val_electrica_ctrl = total_val
+                    elif '53660006' in first_val: val_electrica_suc = total_val
+                except:
+                    pass
+                    
+        dif_concretos = val_concretos_ctrl + val_concretos_suc
+        dif_electrica = val_electrica_ctrl + val_electrica_suc
 
         uploaded_file.seek(0)
         try:
@@ -568,7 +610,7 @@ if uploaded_file is not None:
             st.markdown(html_banner, unsafe_allow_html=True)
 
         # ==========================================
-        # LLENADO DE GRÁFICAS HISTÓRICAS Y TOP AHORROS/DESFASES
+        # LLENADO DE GRÁFICAS HISTÓRICAS
         # ==========================================
         with chart_historico_container:
             st.markdown('<div class="salto-impresion"></div>', unsafe_allow_html=True)
@@ -660,9 +702,10 @@ if uploaded_file is not None:
 
             st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
             
-            # --- SECCIÓN: TOP AHORROS, DESFASES Y POR CONSUMIR ---
-            col_bot1, col_bot2 = st.columns(2)
+            # --- SECCIÓN TRIPLE: AHORROS, POR CONSUMIR Y SUCURSALES ---
+            col_bot1, col_bot2, col_bot3 = st.columns([1.3, 1, 1])
             
+            # --- 1. AHORROS Y DESFASES ---
             with col_bot1:
                 if c_pres_v and c_proy_v and not df_capitulos.empty:
                     df_diff = df_capitulos[[col_desc, c_pres_v, c_proy_v]].copy()
@@ -703,10 +746,10 @@ if uploaded_file is not None:
 <div style="background-color: #8CC63F; height: 16px; width: {width}%;"></div>
 </div>
 </div>'''
-                    
                     html_ah += "</div>"
                     st.markdown(html_ah, unsafe_allow_html=True)
                     
+            # --- 2. POR CONSUMIR ---
             with col_bot2:
                 if c_proy_v and c_cons_v and not df_capitulos.empty:
                     df_por_cons = df_capitulos[[col_desc, c_proy_v, c_cons_v]].copy()
@@ -736,6 +779,44 @@ if uploaded_file is not None:
 </div>'''
                     html_pc += "</div>"
                     st.markdown(html_pc, unsafe_allow_html=True)
+
+            # --- 3. COSTEO ENTRE SUCURSALES ---
+            with col_bot3:
+                def fmt_miles(val):
+                    v = val / 1000.0
+                    return f"-${abs(v):,.0f}" if v < 0 else f"${v:,.0f}"
+
+                color_conc = "#8CC63F" if round(abs(dif_concretos/1000)) == 0 else "#E74C3C"
+                color_elec = "#8CC63F" if round(abs(dif_electrica/1000)) == 0 else "#E74C3C"
+
+                html_suc = f"""<div style='font-family: sans-serif;'>
+<div style='color: #002856; font-size: 1.1rem; font-weight: 800; margin-bottom: 15px;'>Costeo entre sucursales:</div>
+<div style='background-color: #F8F9F9; border-top: 2px solid #DDE5B6; padding-top: 5px; padding-bottom: 5px;'>
+<div style='text-align: center; color: #002856; font-weight: bold; font-size: 0.95rem; margin-bottom: 5px;'>UIV Concretos</div>
+<div style='display: flex; justify-content: space-between; padding: 2px 10px; font-size: 0.85rem; color: #333;'>
+<span>UIV Concretos</span><span>{fmt_miles(val_concretos_suc)}</span>
+</div>
+<div style='display: flex; justify-content: space-between; padding: 2px 10px; font-size: 0.85rem; color: #333;'>
+<span>Control</span><span>{fmt_miles(val_concretos_ctrl)}</span>
+</div>
+<div style='display: flex; justify-content: space-between; padding: 4px 10px; font-size: 0.9rem; font-weight: bold; color: {color_conc}; border-top: 1px dashed #ccc; margin-top: 2px;'>
+<span>Diferencia</span><span>{fmt_miles(dif_concretos)}</span>
+</div>
+</div>
+<div style='background-color: #F8F9F9; border-top: 2px solid #DDE5B6; padding-top: 5px; padding-bottom: 5px; margin-top: 15px;'>
+<div style='text-align: center; color: #002856; font-weight: bold; font-size: 0.95rem; margin-bottom: 5px;'>UIV Eléctrica</div>
+<div style='display: flex; justify-content: space-between; padding: 2px 10px; font-size: 0.85rem; color: #333;'>
+<span>UIV Eléctrica</span><span>{fmt_miles(val_electrica_suc)}</span>
+</div>
+<div style='display: flex; justify-content: space-between; padding: 2px 10px; font-size: 0.85rem; color: #333;'>
+<span>Control</span><span>{fmt_miles(val_electrica_ctrl)}</span>
+</div>
+<div style='display: flex; justify-content: space-between; padding: 4px 10px; font-size: 0.9rem; font-weight: bold; color: {color_elec}; border-top: 1px dashed #ccc; margin-top: 2px;'>
+<span>Diferencia</span><span>{fmt_miles(dif_electrica)}</span>
+</div>
+</div>
+</div>"""
+                st.markdown(html_suc, unsafe_allow_html=True)
                 
             st.markdown("<hr style='margin-top: 20px; margin-bottom: 30px;'>", unsafe_allow_html=True)
 
