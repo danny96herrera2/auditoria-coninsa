@@ -185,7 +185,7 @@ if uploaded_file is not None:
                     first_val, total_val = extraer_total_sucursal(f)
                     if '51390140' in first_val: val_concretos_ctrl = total_val
                     elif '53740007' in first_val: val_concretos_suc = total_val
-                    elif '51390084' in first_val: val_electrica_ctrl = total_val
+                    elif '51390192' in first_val: val_electrica_ctrl = total_val
                     elif '53660006' in first_val: val_electrica_suc = total_val
                 except:
                     pass
