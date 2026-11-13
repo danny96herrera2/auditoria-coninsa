@@ -568,7 +568,7 @@ if uploaded_file is not None:
             st.markdown(html_banner, unsafe_allow_html=True)
 
         # ==========================================
-        # LLENADO DE GRÁFICAS HISTÓRICAS Y TOP AHORROS/DESFASES
+        # LLENADO DE GRÁFICAS HISTÓRICAS Y TOP AHORROS/DESFASES/POR CONSUMIR
         # ==========================================
         with chart_historico_container:
             st.markdown('<div class="salto-impresion"></div>', unsafe_allow_html=True)
@@ -658,17 +658,16 @@ if uploaded_file is not None:
                 else:
                     st.info("Agrega más de una auditoría en la Hoja 4 para ver la gráfica de desviación.")
 
-            # --- NUEVA SECCIÓN: TOP 3 AHORROS Y DESFASES ---
             st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+            
+            # --- SECCIÓN: TOP AHORROS, DESFASES Y POR CONSUMIR ---
             col_bot1, col_bot2 = st.columns(2)
             
             with col_bot1:
                 if c_pres_v and c_proy_v and not df_capitulos.empty:
                     df_diff = df_capitulos[[col_desc, c_pres_v, c_proy_v]].copy()
-                    # Diferencia = Proyectado - Presupuesto
                     df_diff['Diferencia'] = df_diff[c_proy_v] - df_diff[c_pres_v]
                     
-                    # Top 3 Ahorros (Negativos) y Top 3 Desfases (Positivos)
                     df_ahorros = df_diff[df_diff['Diferencia'] < 0].sort_values(by='Diferencia', ascending=True).head(3)
                     df_desfases = df_diff[df_diff['Diferencia'] > 0].sort_values(by='Diferencia', ascending=False).head(3)
                     
@@ -681,7 +680,6 @@ if uploaded_file is not None:
                     max_des = df_desfases['Diferencia'].max() if not df_desfases.empty else 1
                     if max_des == 0: max_des = 1
                     
-                    # Generar Bloque Ahorros
                     html_ah += "<div style='text-align: center; color: #002856; font-weight: 900; font-size: 0.95rem; margin-top: 5px; margin-bottom: 8px;'>Ahorros</div>"
                     for _, row in df_ahorros.iterrows():
                         val = row['Diferencia']
@@ -695,7 +693,6 @@ if uploaded_file is not None:
                             </div>
                         </div>'''
                     
-                    # Generar Bloque Desfases
                     html_ah += "<div style='text-align: center; color: #002856; font-weight: 900; font-size: 0.95rem; margin-top: 15px; margin-bottom: 8px;'>Desfases</div>"
                     for _, row in df_desfases.iterrows():
                         val = row['Diferencia']
@@ -713,8 +710,43 @@ if uploaded_file is not None:
                     st.markdown(html_ah, unsafe_allow_html=True)
                     
             with col_bot2:
-                # Espacio libre para futura gráfica "Costeo entre sucursales"
-                st.empty() 
+                # --- NUEVO: CAPÍTULOS POR CONSUMIR - MAYOR VALOR ---
+                if c_proy_v and c_cons_v and not df_capitulos.empty:
+                    df_por_cons = df_capitulos[[col_desc, c_proy_v, c_cons_v]].copy()
+                    
+                    # Filtro de exclusión estricto para Capítulo 39
+                    df_por_cons = df_por_cons[~df_por_cons[col_desc].astype(str).str.strip().str.startswith('39')]
+                    
+                    # Cálculo: Proyectado - Consumido
+                    df_por_cons['Por_Consumir'] = df_por_cons[c_proy_v] - df_por_cons[c_cons_v]
+                    
+                    # Top 4 de Mayor a Menor
+                    df_top4_cons = df_por_cons.sort_values(by='Por_Consumir', ascending=False).head(4)
+                    
+                    html_pc = "<div style='font-family: sans-serif;'>"
+                    html_pc += "<div style='color: #002856; font-size: 1.1rem; font-weight: 800; margin-bottom: 15px;'>Capítulos por consumir - mayor valor:</div>"
+                    
+                    max_pc = df_top4_cons['Por_Consumir'].max() if not df_top4_cons.empty else 1
+                    if max_pc <= 0: max_pc = 1
+                    
+                    for _, row in df_top4_cons.iterrows():
+                        val = row['Por_Consumir']
+                        width = (val / max_pc) * 100 if val > 0 else 0
+                        desc_limpio = str(row[col_desc]).strip().upper()
+                        
+                        html_pc += f'''
+                        <div style="margin-bottom: 12px;">
+                            <div style="text-align: center; font-size: 0.9rem; font-weight: bold; color: #002856; margin-bottom: 2px;">{desc_limpio}</div>
+                            <div style="display: flex; align-items: center;">
+                                <div style="flex: 1; text-align: right; padding-right: 10px; font-size: 0.95rem; font-weight: 600; color: #002856;">${val:,.0f}</div>
+                                <div style="flex: 2;">
+                                    <div style="background-color: #DDE5B6; height: 18px; width: {width}%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                        '''
+                    html_pc += "</div>"
+                    st.markdown(html_pc, unsafe_allow_html=True)
                 
             st.markdown("<hr style='margin-top: 20px; margin-bottom: 30px;'>", unsafe_allow_html=True)
 
